@@ -35,6 +35,12 @@
  */
 
 import nodemailer from 'nodemailer';
+import { writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ============================================================
 // 設定區
@@ -280,6 +286,90 @@ function buildSummaryHtml(relevantGroups, typhoons) {
 }
 
 // ============================================================
+// Step 7b: 組成狀態頁 index.html(每次執行都會更新,供線上查看目前擷取狀況)
+// ============================================================
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function buildStatusHtml(status) {
+  const generatedAt = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+  const typhoonNames = status.typhoons.length
+    ? status.typhoons.map((t) => escapeHtml(t.nameZh)).join('、')
+    : '無';
+
+  let html = `<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TY_Research 颱風監控狀態</title>
+<style>
+  body { font-family: -apple-system, "Noto Sans TC", sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; line-height: 1.6; color: #1a1a1a; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.1rem; margin-top: 32px; }
+  .meta { color: #666; font-size: 0.9rem; }
+  .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin: 16px 0; }
+  .error { border-color: #e33; background: #fff5f5; }
+  img { max-width: 100%; border-radius: 4px; }
+  a { color: #0b5fff; }
+</style>
+</head>
+<body>
+<h1>TY_Research 颱風監控狀態</h1>
+<p class="meta">最後執行時間：${generatedAt}(每次 Routine 執行後自動更新此頁)</p>
+
+<div class="card${status.error ? ' error' : ''}">
+  <p>目前生效警報颱風：<strong>${typhoonNames}</strong></p>
+  ${status.note ? `<p>${escapeHtml(status.note)}</p>` : ''}
+  ${status.error ? `<p><strong>執行錯誤：</strong>${escapeHtml(status.error)}</p>` : ''}
+</div>
+`;
+
+  if (status.relevantGroups && status.relevantGroups.length) {
+    html += `<h2>本次擷取到的新推文</h2>`;
+    for (const group of status.relevantGroups) {
+      html += `<div class="card"><h3><a href="${escapeHtml(group.article.url)}">${escapeHtml(group.article.title)}</a></h3><ul>`;
+      for (const p of group.pushes) {
+        const timeStr = p.time ? p.time.toLocaleString('zh-TW') : '(時間未知)';
+        html += `<li><strong>${escapeHtml(p.tag)}${escapeHtml(p.userid)}</strong>：${escapeHtml(p.content)} <em>(${timeStr})</em></li>`;
+        for (const img of extractImageUrls(p.content)) {
+          html += `<div><img src="${escapeHtml(img)}" /></div>`;
+        }
+      }
+      html += `</ul></div>`;
+    }
+  }
+
+  html += `</body></html>\n`;
+  return html;
+}
+
+function writeStatusPage(html) {
+  writeFileSync(path.join(__dirname, 'index.html'), html);
+}
+
+function commitAndPushStatusPage() {
+  const opts = { cwd: __dirname, stdio: 'pipe' };
+  try {
+    execFileSync('git', ['add', 'index.html'], opts);
+    const staged = execFileSync('git', ['diff', '--cached', '--name-only'], opts).toString().trim();
+    if (!staged) {
+      console.log('狀態頁無變化,略過 commit。');
+      return;
+    }
+    execFileSync('git', ['commit', '-m', 'Update status page'], opts);
+    execFileSync('git', ['push'], opts);
+    console.log('已將狀態頁 commit 並 push。');
+  } catch (err) {
+    console.error('更新狀態頁 commit/push 失敗:', err.message);
+  }
+}
+
+// ============================================================
 // Step 8: 寄送 Email
 // ============================================================
 async function sendEmail(subject, html) {
@@ -302,66 +392,86 @@ async function sendEmail(subject, html) {
 // ============================================================
 // 主流程
 // ============================================================
+function finish(status) {
+  writeStatusPage(buildStatusHtml(status));
+  commitAndPushStatusPage();
+}
+
 async function main() {
-  assertConfig();
+  const status = { typhoons: [], relevantGroups: [], note: '', error: null };
 
-  console.log('[1/6] 檢查中央氣象署颱風警報...');
-  const typhoons = await getActiveTyphoons();
-  if (typhoons.length === 0) {
-    console.log('目前無生效颱風警報,結束本次執行。');
-    return;
-  }
-  console.log(`偵測到警報颱風: ${typhoons.map((t) => t.nameZh).join('、')}`);
+  try {
+    assertConfig();
 
-  console.log('[2/6] 讀取上次處理進度...');
-  const lastCheckpoint = await getLastCheckpoint();
-  const windowStart = new Date(Date.now() - CONFIG.TIME_WINDOW_HOURS * 3600 * 1000);
-  const effectiveStart = lastCheckpoint && lastCheckpoint > windowStart ? lastCheckpoint : windowStart;
-  console.log(`本次篩選起點: ${effectiveStart.toISOString()}`);
+    console.log('[1/6] 檢查中央氣象署颱風警報...');
+    const typhoons = await getActiveTyphoons();
+    status.typhoons = typhoons;
+    if (typhoons.length === 0) {
+      status.note = '目前無生效颱風警報,結束本次執行。';
+      console.log(status.note);
+      return;
+    }
+    console.log(`偵測到警報颱風: ${typhoons.map((t) => t.nameZh).join('、')}`);
 
-  console.log('[3/6] 抓取 TY_Research 文章列表...');
-  const articles = await fetchBoardArticles();
-  const typhoonNameList = typhoons.map((t) => t.nameZh).filter(Boolean);
-  const candidateArticles = articles
-    .filter((a) => typhoonNameList.some((name) => a.title.includes(name)))
-    .slice(0, CONFIG.MAX_ARTICLES_TO_CHECK);
+    console.log('[2/6] 讀取上次處理進度...');
+    const lastCheckpoint = await getLastCheckpoint();
+    const windowStart = new Date(Date.now() - CONFIG.TIME_WINDOW_HOURS * 3600 * 1000);
+    const effectiveStart = lastCheckpoint && lastCheckpoint > windowStart ? lastCheckpoint : windowStart;
+    console.log(`本次篩選起點: ${effectiveStart.toISOString()}`);
 
-  if (candidateArticles.length === 0) {
-    console.log('看板最新文章中未找到與目前颱風相關的標題,結束本次執行。');
-    return;
-  }
-  console.log(`找到 ${candidateArticles.length} 篇相關文章,開始逐篇檢查推文...`);
+    console.log('[3/6] 抓取 TY_Research 文章列表...');
+    const articles = await fetchBoardArticles();
+    const typhoonNameList = typhoons.map((t) => t.nameZh).filter(Boolean);
+    const candidateArticles = articles
+      .filter((a) => typhoonNameList.some((name) => a.title.includes(name)))
+      .slice(0, CONFIG.MAX_ARTICLES_TO_CHECK);
 
-  console.log('[4/6] 抓取推文並篩選時間窗...');
-  const relevantGroups = [];
-  let latestPushTime = effectiveStart;
+    if (candidateArticles.length === 0) {
+      status.note = '看板最新文章中未找到與目前颱風相關的標題,結束本次執行。';
+      console.log(status.note);
+      return;
+    }
+    console.log(`找到 ${candidateArticles.length} 篇相關文章,開始逐篇檢查推文...`);
 
-  for (const article of candidateArticles) {
-    await sleep(CONFIG.REQUEST_DELAY_MS);
-    const pushes = await fetchArticlePushes(article.url);
-    const relevant = pushes.filter((p) => p.time && p.time > effectiveStart);
-    if (relevant.length > 0) {
-      relevantGroups.push({ article, pushes: relevant });
-      for (const p of relevant) {
-        if (p.time > latestPushTime) latestPushTime = p.time;
+    console.log('[4/6] 抓取推文並篩選時間窗...');
+    const relevantGroups = [];
+    let latestPushTime = effectiveStart;
+
+    for (const article of candidateArticles) {
+      await sleep(CONFIG.REQUEST_DELAY_MS);
+      const pushes = await fetchArticlePushes(article.url);
+      const relevant = pushes.filter((p) => p.time && p.time > effectiveStart);
+      if (relevant.length > 0) {
+        relevantGroups.push({ article, pushes: relevant });
+        for (const p of relevant) {
+          if (p.time > latestPushTime) latestPushTime = p.time;
+        }
       }
     }
+    status.relevantGroups = relevantGroups;
+
+    if (relevantGroups.length === 0) {
+      status.note = `時間窗內無新推文(已檢查 ${candidateArticles.length} 篇相關文章),結束本次執行。`;
+      console.log(status.note);
+      return;
+    }
+
+    console.log('[5/6] 組成摘要並寄送 Email...');
+    const html = buildSummaryHtml(relevantGroups, typhoons);
+    const subject = `[颱風監控] ${typhoons.map((t) => t.nameZh).join('/')} TY_Research 專業回文彙整`;
+    await sendEmail(subject, html);
+    console.log(`已寄送給: ${CONFIG.RECIPIENTS.join(', ')}`);
+    status.note = `已寄送摘要 email 給 ${CONFIG.RECIPIENTS.length} 位收件人。`;
+
+    console.log('[6/6] 更新 Notion 進度紀錄...');
+    await setCheckpoint(latestPushTime);
+    console.log('完成。');
+  } catch (err) {
+    status.error = err.message;
+    throw err;
+  } finally {
+    finish(status);
   }
-
-  if (relevantGroups.length === 0) {
-    console.log('時間窗內無新推文,結束本次執行。');
-    return;
-  }
-
-  console.log('[5/6] 組成摘要並寄送 Email...');
-  const html = buildSummaryHtml(relevantGroups, typhoons);
-  const subject = `[颱風監控] ${typhoons.map((t) => t.nameZh).join('/')} TY_Research 專業回文彙整`;
-  await sendEmail(subject, html);
-  console.log(`已寄送給: ${CONFIG.RECIPIENTS.join(', ')}`);
-
-  console.log('[6/6] 更新 Notion 進度紀錄...');
-  await setCheckpoint(latestPushTime);
-  console.log('完成。');
 }
 
 main().catch((err) => {
