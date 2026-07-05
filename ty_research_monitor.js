@@ -31,6 +31,11 @@
  *    (沙盒網路白名單不含 opendata.cwa.gov.tw),第一次執行時
  *    請先用 DEBUG_CWA=1 環境變數印出完整回傳結構,核對欄位名稱
  *    是否與下方 getActiveTyphoons() 的解析邏輯一致,必要時微調。
+ *
+ * ⚠️ 同理,getGlobalModelTracks() 讀取 NOAA/JTWC 公開的 ATCF aid-deck 檔案
+ *    (https://ftp.nhc.noaa.gov/atcf/aid_public/),彙整全球各數值模式與 JTWC
+ *    官方預測的路徑點,格式是長年穩定的公開標準,但同樣未能在此環境即時驗證
+ *    (無法連外測試),第一次遇到真實颱風時請用 DEBUG_TRACKS=1 核對解析結果。
  */
 
 import nodemailer from 'nodemailer';
@@ -38,6 +43,7 @@ import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import zlib from 'node:zlib';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CHECKPOINT_FILE = path.join(__dirname, '.state', 'checkpoint.json');
@@ -48,6 +54,7 @@ const CHECKPOINT_FILE = path.join(__dirname, '.state', 'checkpoint.json');
 const CONFIG = {
   CWA_API_KEY: process.env.CWA_API_KEY,
   CWA_TYPHOON_ENDPOINT: 'https://opendata.cwa.gov.tw/api/v1/rest/datastore/W-C0034-005',
+  ATCF_AID_DECK_BASE: 'https://ftp.nhc.noaa.gov/atcf/aid_public',
 
   PTT_BOARD: 'TY_Research',
   PTT_BASE: 'https://www.ptt.cc',
@@ -105,11 +112,144 @@ async function getActiveTyphoons() {
     return [];
   }
 
-  // 取出中文名稱(cwaTyphoonName)與英文名稱(typhoonName)供比對用
+  // 取出中文名稱(cwaTyphoonName)與英文名稱(typhoonName)供比對用,並保留原始物件
+  // 供 getCwaForecastTrack()/getGlobalModelTracks() 進一步解析路徑與編號
   return cyclones.map((c) => ({
     nameZh: c.cwaTyphoonName || c.typhoonName || '未知颱風',
     nameEn: c.typhoonName || '',
+    raw: c,
   }));
+}
+
+// ============================================================
+// Step 1b: 從 CWA 原始資料中擷取「中央氣象署自己的預測路徑」
+// (與 getActiveTyphoons() 用同一組已驗證授權的資料,沒有額外的外部依賴)
+// ============================================================
+function getCwaForecastTrack(typhoon) {
+  const raw = typhoon.raw || {};
+  // 防禦性解析:CWA 的預測路徑欄位位置嘗試多種可能路徑,實際結構請以
+  // DEBUG_TRACKS=1 輸出為準,必要時調整
+  const fixes =
+    raw?.forecastData?.fix ||
+    raw?.analysisData?.fix ||
+    raw?.forecast?.fix ||
+    [];
+
+  if (!Array.isArray(fixes) || fixes.length === 0) return [];
+
+  return fixes
+    .map((f) => {
+      const coord = f.coordinate || f.coord || '';
+      const [lonStr, latStr] = String(coord).split(',');
+      const lat = Number(latStr);
+      const lon = Number(lonStr);
+      if (Number.isNaN(lat) || Number.isNaN(lon)) return null;
+      return {
+        tau: Number(f.tau ?? f.forecastHour) || 0,
+        lat,
+        lon,
+        vmax: Number(f.maxWindSpeed) || null,
+        mslp: Number(f.pressure) || null,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.tau - b.tau);
+}
+
+// ============================================================
+// Step 1c: 猜測颱風的 ATCF 編號(西太平洋 basin=WP),用來組出 NOAA 的
+// aid-deck 檔名。CWA 資料裡沒有穩定保證一定有這個欄位,猜不到就放棄
+// ============================================================
+function guessAtcfStormNumber(typhoon) {
+  const raw = typhoon.raw || {};
+  const candidate =
+    raw.cwaTyNo || raw.typhoonNo || raw.cwaTdNo || raw.tyNo || raw.number;
+  if (!candidate) return null;
+  const digits = String(candidate).match(/\d+/);
+  return digits ? Number(digits[0]) : null;
+}
+
+// ============================================================
+// Step 1d: 讀取 NOAA/JTWC 公開的 ATCF aid-deck,彙整全球各數值模式
+// (GFS/ECMWF/UKMET 等)與 JTWC 官方預測路徑
+// ============================================================
+function parseAtcfLatLon(str) {
+  const m = String(str).match(/^(\d+)([NSEW])$/);
+  if (!m) return null;
+  const value = Number(m[1]) / 10;
+  const sign = m[2] === 'S' || m[2] === 'W' ? -1 : 1;
+  return value * sign;
+}
+
+function parseAtcfAidDeck(text) {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const latestInitByTech = new Map();
+
+  for (const line of lines) {
+    const f = line.split(',').map((s) => s.trim());
+    if (f.length < 8) continue;
+    const [, , initTimeStr, , tech] = f;
+    const prev = latestInitByTech.get(tech);
+    if (!prev || initTimeStr > prev) latestInitByTech.set(tech, initTimeStr);
+  }
+
+  const tracks = {};
+  for (const line of lines) {
+    const f = line.split(',').map((s) => s.trim());
+    if (f.length < 8) continue;
+    const [, , initTimeStr, , tech, tauStr, latStr, lonStr, vmaxStr, mslpStr] = f;
+    if (initTimeStr !== latestInitByTech.get(tech)) continue; // 只取每個模式最新一次的預報
+    const tau = Number(tauStr);
+    const lat = parseAtcfLatLon(latStr);
+    const lon = parseAtcfLatLon(lonStr);
+    if (lat === null || lon === null || Number.isNaN(tau)) continue;
+    (tracks[tech] ||= []).push({
+      tau,
+      lat,
+      lon,
+      vmax: Number(vmaxStr) || null,
+      mslp: Number(mslpStr) || null,
+    });
+  }
+
+  for (const tech of Object.keys(tracks)) {
+    tracks[tech].sort((a, b) => a.tau - b.tau);
+  }
+  return tracks;
+}
+
+async function getGlobalModelTracks(typhoon) {
+  const stormNo = guessAtcfStormNumber(typhoon);
+  if (!stormNo) {
+    console.warn(`無法從 CWA 資料猜出 ${typhoon.nameZh} 的 ATCF 編號,略過全球模式路徑比對。`);
+    return null;
+  }
+  const year = new Date().getFullYear();
+  const nn = String(stormNo).padStart(2, '0');
+  const candidates = [
+    `${CONFIG.ATCF_AID_DECK_BASE}/awp${nn}${year}.dat`,
+    `${CONFIG.ATCF_AID_DECK_BASE}/awp${nn}${year}.dat.gz`,
+  ];
+
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const text = url.endsWith('.gz')
+        ? zlib.gunzipSync(Buffer.from(await res.arrayBuffer())).toString('utf8')
+        : await res.text();
+
+      if (process.env.DEBUG_TRACKS === '1') {
+        console.log(`--- ATCF aid-deck 原始回傳(除錯用, ${url}) ---`);
+        console.log(text.slice(0, 2000));
+      }
+
+      return parseAtcfAidDeck(text);
+    } catch (err) {
+      console.warn(`ATCF 資料抓取失敗(${url}):`, err.message);
+    }
+  }
+  return null;
 }
 
 // ============================================================
@@ -218,11 +358,13 @@ function setCheckpoint(timestamp) {
 // ============================================================
 // Step 7: 組成摘要 email HTML
 // ============================================================
-function buildSummaryHtml(relevantGroups, typhoons) {
+function buildSummaryHtml(relevantGroups, typhoons, trackForecasts) {
   const typhoonNames = typhoons.map((t) => t.nameZh).join('、');
   let html = `<h2>TY_Research 颱風監控彙整</h2>`;
   html += `<p>目前生效警報颱風：<strong>${typhoonNames}</strong></p>`;
-  html += `<p>資料範圍：過去 ${CONFIG.TIME_WINDOW_HOURS} 小時內的新推文</p><hr/>`;
+  html += `<p>資料範圍：過去 ${CONFIG.TIME_WINDOW_HOURS} 小時內的新推文</p>`;
+  html += buildTrackForecastHtml(trackForecasts);
+  html += `<hr/>`;
 
   for (const group of relevantGroups) {
     html += `<h3><a href="${group.article.url}">${group.article.title}</a></h3><ul>`;
@@ -247,6 +389,39 @@ function escapeHtml(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+function formatTrackPoints(points) {
+  return points
+    .map((p) => `+${p.tau}h(${p.lat.toFixed(1)},${p.lon.toFixed(1)}${p.vmax ? `,${p.vmax}kt` : ''})`)
+    .join(' → ');
+}
+
+function buildTrackForecastHtml(trackForecasts) {
+  if (!trackForecasts || trackForecasts.length === 0) return '';
+
+  let html = `<h2>各方預測路徑比較</h2>
+  <p class="meta">CWA 為中央氣象署自己的預測路徑;其餘為 NOAA/JTWC 彙整的全球數值模式與 JTWC 官方預測(來源:
+  <a href="https://ftp.nhc.noaa.gov/atcf/aid_public/">NOAA ATCF aid-deck</a>,
+  另可參考 <a href="https://www.metoc.navy.mil/jtwc/jtwc.html">JTWC 官網</a>)</p>`;
+
+  for (const t of trackForecasts) {
+    html += `<div class="card"><h3>${escapeHtml(t.nameZh)}</h3><ul>`;
+    if (t.cwaTrack && t.cwaTrack.length) {
+      html += `<li><strong>CWA</strong>: ${escapeHtml(formatTrackPoints(t.cwaTrack))}</li>`;
+    } else {
+      html += `<li>CWA 路徑資料暫無法解析</li>`;
+    }
+    if (t.globalTracks) {
+      for (const [tech, points] of Object.entries(t.globalTracks)) {
+        html += `<li><strong>${escapeHtml(tech)}</strong>: ${escapeHtml(formatTrackPoints(points))}</li>`;
+      }
+    } else {
+      html += `<li>全球模式路徑暫無法取得(可能是 ATCF 編號無法對應,或 NOAA 該時段尚無資料)</li>`;
+    }
+    html += `</ul></div>`;
+  }
+  return html;
 }
 
 function buildStatusHtml(status) {
@@ -281,6 +456,7 @@ function buildStatusHtml(status) {
   ${status.note ? `<p>${escapeHtml(status.note)}</p>` : ''}
   ${status.error ? `<p><strong>執行錯誤：</strong>${escapeHtml(status.error)}</p>` : ''}
 </div>
+${buildTrackForecastHtml(status.trackForecasts)}
 `;
 
   if (status.relevantGroups && status.relevantGroups.length) {
@@ -354,7 +530,7 @@ function finish(status) {
 }
 
 async function main() {
-  const status = { typhoons: [], relevantGroups: [], note: '', error: null };
+  const status = { typhoons: [], relevantGroups: [], trackForecasts: [], note: '', error: null };
 
   try {
     assertConfig();
@@ -368,6 +544,19 @@ async function main() {
       return;
     }
     console.log(`偵測到警報颱風: ${typhoons.map((t) => t.nameZh).join('、')}`);
+
+    console.log('[1b/6] 收集各方預測路徑(CWA 自己的路徑 + NOAA/JTWC 彙整的全球模式路徑)...');
+    status.trackForecasts = [];
+    for (const t of typhoons) {
+      try {
+        const cwaTrack = getCwaForecastTrack(t);
+        const globalTracks = await getGlobalModelTracks(t);
+        status.trackForecasts.push({ nameZh: t.nameZh, cwaTrack, globalTracks });
+      } catch (err) {
+        // 路徑比對只是輔助資訊,失敗不應該讓整個 routine 中斷
+        console.warn(`收集 ${t.nameZh} 的預測路徑失敗:`, err.message);
+      }
+    }
 
     console.log('[2/6] 讀取上次處理進度...');
     const lastCheckpoint = getLastCheckpoint();
@@ -413,7 +602,7 @@ async function main() {
     }
 
     console.log('[5/6] 組成摘要並寄送 Email...');
-    const html = buildSummaryHtml(relevantGroups, typhoons);
+    const html = buildSummaryHtml(relevantGroups, typhoons, status.trackForecasts);
     const subject = `[颱風監控] ${typhoons.map((t) => t.nameZh).join('/')} TY_Research 專業回文彙整`;
     await sendEmail(subject, html);
     console.log(`已寄送給: ${CONFIG.RECIPIENTS.join(', ')}`);
