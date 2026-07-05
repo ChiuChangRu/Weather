@@ -1,0 +1,12 @@
+{
+  "name": "weather",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "monitor:typhoon": "node ty_research_monitor.js"
+  },
+  "dependencies": {
+    "nodemailer": "^6.10.1"
+  }
+}
