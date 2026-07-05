@@ -12,16 +12,15 @@
  *      (並排除上次已處理過的時間點,避免重複寄送)
  *   6. 從推文文字中擷取圖片連結(imgur 等)
  *   7. 組成摘要 email,寄給三位收件人
- *   8. 把本次處理到的最新時間點寫回 Notion,做為下次執行的起點
+ *   8. 把本次處理到的最新時間點寫回 .state/checkpoint.json 並 commit,做為下次執行的起點
  *
  * 執行方式：node ty_research_monitor.js
- * 建議透過 Claude Code cloud Routine 設定 Cron,每 6 小時觸發一次
- * (Claude Pro 方案 Routine 每日執行上限為5次,每6小時一天4次,在額度內)。
+ * 建議透過 GitHub Actions 排程執行(見 .github/workflows/typhoon-monitor.yml),
+ * 每 6 小時觸發一次。
  *
- * 必要環境變數(不要寫死在程式碼或 commit 進公開 repo)：
+ * 必要環境變數(不要寫死在程式碼或 commit 進公開 repo,請設定在 GitHub repo 的
+ * Settings → Secrets and variables → Actions 裡)：
  *   CWA_API_KEY          中央氣象署開放資料授權碼
- *   NOTION_TOKEN         Notion Integration Token
- *   NOTION_STATE_PAGE_ID 用來存放「上次處理到的時間戳記」的 Notion 頁面 ID
  *   GMAIL_USER           寄件 Gmail 帳號
  *   GMAIL_APP_PASSWORD   Gmail 應用程式密碼(非登入密碼,需在 Google 帳號設定中另外產生)
  *
@@ -35,12 +34,13 @@
  */
 
 import nodemailer from 'nodemailer';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const CHECKPOINT_FILE = path.join(__dirname, '.state', 'checkpoint.json');
 
 // ============================================================
 // 設定區
@@ -56,9 +56,6 @@ const CONFIG = {
   MAX_ARTICLES_TO_CHECK: 25,     // 每次最多檢查看板最新幾篇文章
   REQUEST_DELAY_MS: 800,         // 每次抓取文章之間的延遲,避免被PTT暫時擋IP
 
-  NOTION_TOKEN: process.env.NOTION_TOKEN,
-  NOTION_STATE_PAGE_ID: process.env.NOTION_STATE_PAGE_ID,
-
   GMAIL_USER: process.env.GMAIL_USER,
   GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD,
 
@@ -70,7 +67,7 @@ const CONFIG = {
 };
 
 function assertConfig() {
-  const required = ['CWA_API_KEY', 'NOTION_TOKEN', 'NOTION_STATE_PAGE_ID', 'GMAIL_USER', 'GMAIL_APP_PASSWORD'];
+  const required = ['CWA_API_KEY', 'GMAIL_USER', 'GMAIL_APP_PASSWORD'];
   const missing = required.filter((k) => !CONFIG[k]);
   if (missing.length) {
     throw new Error(`缺少環境變數: ${missing.join(', ')}`);
@@ -198,67 +195,24 @@ function extractImageUrls(text) {
 }
 
 // ============================================================
-// Step 6: Notion 進度紀錄讀寫(用來記住上次處理到哪個時間點)
+// Step 6: 進度紀錄讀寫(存在 repo 裡的 .state/checkpoint.json,用來記住
+// 上次處理到哪個時間點;跟 index.html 一樣由本腳本自己 commit+push 回去)
 // ============================================================
-const NOTION_VERSION = '2022-06-28';
-
-async function getLastCheckpoint() {
-  const res = await fetch(`https://api.notion.com/v1/blocks/${CONFIG.NOTION_STATE_PAGE_ID}/children?page_size=1`, {
-    headers: {
-      Authorization: `Bearer ${CONFIG.NOTION_TOKEN}`,
-      'Notion-Version': NOTION_VERSION,
-    },
-  });
-  if (!res.ok) {
-    console.warn('讀取 Notion 進度失敗,視為第一次執行');
+function getLastCheckpoint() {
+  if (!existsSync(CHECKPOINT_FILE)) return null;
+  try {
+    const { lastPushTime } = JSON.parse(readFileSync(CHECKPOINT_FILE, 'utf8'));
+    const ts = new Date(lastPushTime);
+    return isNaN(ts.getTime()) ? null : ts;
+  } catch (err) {
+    console.warn('讀取 checkpoint 檔案失敗,視為第一次執行:', err.message);
     return null;
   }
-  const data = await res.json();
-  const firstBlock = data.results?.[0];
-  const text = firstBlock?.paragraph?.rich_text?.[0]?.plain_text;
-  if (!text) return null;
-  const ts = new Date(text);
-  return isNaN(ts.getTime()) ? null : ts;
 }
 
-async function setCheckpoint(timestamp) {
-  // 先取得第一個 block 的 ID 才能更新;若頁面是空的則改用新增 block
-  const listRes = await fetch(`https://api.notion.com/v1/blocks/${CONFIG.NOTION_STATE_PAGE_ID}/children?page_size=1`, {
-    headers: {
-      Authorization: `Bearer ${CONFIG.NOTION_TOKEN}`,
-      'Notion-Version': NOTION_VERSION,
-    },
-  });
-  const listData = await listRes.json();
-  const firstBlockId = listData.results?.[0]?.id;
-
-  const paragraphBlock = {
-    paragraph: {
-      rich_text: [{ text: { content: timestamp.toISOString() } }],
-    },
-  };
-
-  if (firstBlockId) {
-    await fetch(`https://api.notion.com/v1/blocks/${firstBlockId}`, {
-      method: 'PATCH',
-      headers: {
-        Authorization: `Bearer ${CONFIG.NOTION_TOKEN}`,
-        'Notion-Version': NOTION_VERSION,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(paragraphBlock),
-    });
-  } else {
-    await fetch(`https://api.notion.com/v1/blocks/${CONFIG.NOTION_STATE_PAGE_ID}/children`, {
-      method: 'PATCH',
-      headers: {
-        Authorization: `Bearer ${CONFIG.NOTION_TOKEN}`,
-        'Notion-Version': NOTION_VERSION,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ children: [{ object: 'block', type: 'paragraph', ...paragraphBlock }] }),
-    });
-  }
+function setCheckpoint(timestamp) {
+  mkdirSync(path.dirname(CHECKPOINT_FILE), { recursive: true });
+  writeFileSync(CHECKPOINT_FILE, JSON.stringify({ lastPushTime: timestamp.toISOString() }, null, 2) + '\n');
 }
 
 // ============================================================
@@ -352,20 +306,20 @@ function writeStatusPage(html) {
   writeFileSync(path.join(__dirname, 'index.html'), html);
 }
 
-function commitAndPushStatusPage() {
+function commitAndPush() {
   const opts = { cwd: __dirname, stdio: 'pipe' };
   try {
-    execFileSync('git', ['add', 'index.html'], opts);
+    execFileSync('git', ['add', 'index.html', '.state/checkpoint.json'], opts);
     const staged = execFileSync('git', ['diff', '--cached', '--name-only'], opts).toString().trim();
     if (!staged) {
-      console.log('狀態頁無變化,略過 commit。');
+      console.log('狀態頁與 checkpoint 皆無變化,略過 commit。');
       return;
     }
-    execFileSync('git', ['commit', '-m', 'Update status page'], opts);
+    execFileSync('git', ['commit', '-m', 'Update status page and checkpoint'], opts);
     execFileSync('git', ['push'], opts);
-    console.log('已將狀態頁 commit 並 push。');
+    console.log('已將狀態頁與 checkpoint commit 並 push。');
   } catch (err) {
-    console.error('更新狀態頁 commit/push 失敗:', err.message);
+    console.error('commit/push 失敗:', err.message);
   }
 }
 
@@ -394,7 +348,7 @@ async function sendEmail(subject, html) {
 // ============================================================
 function finish(status) {
   writeStatusPage(buildStatusHtml(status));
-  commitAndPushStatusPage();
+  commitAndPush();
 }
 
 async function main() {
@@ -414,7 +368,7 @@ async function main() {
     console.log(`偵測到警報颱風: ${typhoons.map((t) => t.nameZh).join('、')}`);
 
     console.log('[2/6] 讀取上次處理進度...');
-    const lastCheckpoint = await getLastCheckpoint();
+    const lastCheckpoint = getLastCheckpoint();
     const windowStart = new Date(Date.now() - CONFIG.TIME_WINDOW_HOURS * 3600 * 1000);
     const effectiveStart = lastCheckpoint && lastCheckpoint > windowStart ? lastCheckpoint : windowStart;
     console.log(`本次篩選起點: ${effectiveStart.toISOString()}`);
@@ -463,8 +417,8 @@ async function main() {
     console.log(`已寄送給: ${CONFIG.RECIPIENTS.join(', ')}`);
     status.note = `已寄送摘要 email 給 ${CONFIG.RECIPIENTS.length} 位收件人。`;
 
-    console.log('[6/6] 更新 Notion 進度紀錄...');
-    await setCheckpoint(latestPushTime);
+    console.log('[6/6] 更新 checkpoint 進度紀錄...');
+    setCheckpoint(latestPushTime);
     console.log('完成。');
   } catch (err) {
     status.error = err.message;
