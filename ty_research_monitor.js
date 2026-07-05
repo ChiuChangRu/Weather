@@ -309,7 +309,9 @@ function writeStatusPage(html) {
 function commitAndPush() {
   const opts = { cwd: __dirname, stdio: 'pipe' };
   try {
-    execFileSync('git', ['add', 'index.html', '.state/checkpoint.json'], opts);
+    const filesToAdd = ['index.html'];
+    if (existsSync(CHECKPOINT_FILE)) filesToAdd.push('.state/checkpoint.json');
+    execFileSync('git', ['add', ...filesToAdd], opts);
     const staged = execFileSync('git', ['diff', '--cached', '--name-only'], opts).toString().trim();
     if (!staged) {
       console.log('狀態頁與 checkpoint 皆無變化,略過 commit。');
