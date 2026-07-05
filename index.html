@@ -7,15 +7,21 @@
 <style>
   body { font-family: -apple-system, "Noto Sans TC", sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; line-height: 1.6; color: #1a1a1a; }
   h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.1rem; margin-top: 32px; }
   .meta { color: #666; font-size: 0.9rem; }
   .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin: 16px 0; }
+  .error { border-color: #e33; background: #fff5f5; }
+  img { max-width: 100%; border-radius: 4px; }
+  a { color: #0b5fff; }
 </style>
 </head>
 <body>
 <h1>TY_Research 颱風監控狀態</h1>
-<p class="meta">尚未執行過任何 Routine(每次執行後此頁會自動更新)</p>
-<div class="card">
+<p class="meta">最後執行時間：2026/7/5 下午3:30:21(每次 Routine 執行後自動更新此頁)</p>
+
+<div class="card error">
   <p>目前生效警報颱風：<strong>無</strong></p>
+  
+  <p><strong>執行錯誤：</strong>缺少環境變數: CWA_API_KEY, NOTION_TOKEN, NOTION_STATE_PAGE_ID, GMAIL_USER, GMAIL_APP_PASSWORD</p>
 </div>
-</body>
-</html>
+</body></html>
