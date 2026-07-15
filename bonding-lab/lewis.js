@@ -5,10 +5,10 @@
 
   // orb = 可用軌域數(決定二隅體/八隅體)；價電子先填未配對、再成對(洪德規則的簡化)
   const ELEMENTS = {
-    H: { valence: 1, orb: 1, color: '#aab4f7', r: 22, name: '氫' },
-    C: { valence: 4, orb: 4, color: '#d6d6d6', r: 30, name: '碳' },
-    N: { valence: 5, orb: 4, color: '#a8e6b8', r: 30, name: '氮' },
-    O: { valence: 6, orb: 4, color: '#f5abc9', r: 30, name: '氧' },
+    H: { valence: 1, orb: 1, color: '#aab4f7', r: 22, name: '氫', en: 2.2 },
+    C: { valence: 4, orb: 4, color: '#d6d6d6', r: 30, name: '碳', en: 2.55 },
+    N: { valence: 5, orb: 4, color: '#a8e6b8', r: 30, name: '氮', en: 3.04 },
+    O: { valence: 6, orb: 4, color: '#f5abc9', r: 30, name: '氧', en: 3.44 },
   };
 
   const SUBSCRIPT = { 0: '₀', 1: '₁', 2: '₂', 3: '₃', 4: '₄', 5: '₅', 6: '₆', 7: '₇', 8: '₈', 9: '₉' };
@@ -439,6 +439,124 @@
     requestAnimationFrame(frame);
   }
 
+  // ---- 幾何量測:鍵長與鍵角 ----
+  function geometryInfo() {
+    const bondsInfo = bonds.map((b) => {
+      const a1 = atomById(b.a);
+      const a2 = atomById(b.b);
+      const sym = b.order === 1 ? '−' : b.order === 2 ? '=' : '≡';
+      return {
+        label: `${a1.el}${sym}${a2.el}`,
+        len: Math.hypot(a2.x - a1.x, a2.y - a1.y),
+        r0: r0Of(b),
+      };
+    });
+    const angles = [];
+    atoms.forEach((c) => {
+      const nb = neighborsOf(c);
+      if (nb.length < 2) return;
+      const items = nb
+        .map((n) => ({ n, th: Math.atan2(n.y - c.y, n.x - c.x) }))
+        .sort((p, q) => p.th - q.th);
+      const count = items.length === 2 ? 1 : items.length;
+      for (let i = 0; i < count; i++) {
+        const cur = items[i];
+        const nxt = items[(i + 1) % items.length];
+        let start = cur.th;
+        let gap = nxt.th - cur.th;
+        if (gap <= 0) gap += 2 * Math.PI;
+        if (items.length === 2 && gap > Math.PI) {
+          start = nxt.th;
+          gap = 2 * Math.PI - gap;
+        }
+        angles.push({
+          label: `${cur.n.el}−${c.el}−${nxt.n.el}`,
+          deg: (gap * 180) / Math.PI,
+          c,
+          start,
+          gap,
+        });
+      }
+    });
+    return { bondsInfo, angles };
+  }
+
+  function drawGeometryLabels(layer) {
+    // 鍵長標在鍵旁
+    bonds.forEach((b) => {
+      const a1 = atomById(b.a);
+      const a2 = atomById(b.b);
+      const d = Math.hypot(a2.x - a1.x, a2.y - a1.y) || 1;
+      const px = -(a2.y - a1.y) / d;
+      const py = (a2.x - a1.x) / d;
+      const t = el('text', {
+        x: (a1.x + a2.x) / 2 + px * 24,
+        y: (a1.y + a2.y) / 2 + py * 24,
+        'text-anchor': 'middle',
+        'font-size': 10,
+        fill: '#98a1b3',
+      });
+      t.textContent = d.toFixed(0);
+      layer.appendChild(t);
+    });
+    // 鍵角弧線與度數
+    geometryInfo().angles.forEach((ang) => {
+      const c = ang.c;
+      const rr = ELEMENTS[c.el].r + 20;
+      const p1x = c.x + rr * Math.cos(ang.start);
+      const p1y = c.y + rr * Math.sin(ang.start);
+      const p2x = c.x + rr * Math.cos(ang.start + ang.gap);
+      const p2y = c.y + rr * Math.sin(ang.start + ang.gap);
+      layer.appendChild(
+        el('path', {
+          d: `M${p1x.toFixed(1)},${p1y.toFixed(1)} A${rr},${rr} 0 ${ang.gap > Math.PI ? 1 : 0} 1 ${p2x.toFixed(1)},${p2y.toFixed(1)}`,
+          fill: 'none',
+          stroke: '#b7bfd1',
+          'stroke-width': 1.2,
+        })
+      );
+      const mid = ang.start + ang.gap / 2;
+      const t = el('text', {
+        x: c.x + (rr + 14) * Math.cos(mid),
+        y: c.y + (rr + 14) * Math.sin(mid),
+        'text-anchor': 'middle',
+        'dominant-baseline': 'central',
+        'font-size': 10.5,
+        fill: '#8a93a8',
+      });
+      t.textContent = `${ang.deg.toFixed(0)}°`;
+      layer.appendChild(t);
+    });
+  }
+
+  // ---- 電負度:部分電荷與偶極 ----
+  // pull > 0:此原子把電子拉過來(δ−);< 0:電子被拉走(δ+)
+  function pullOf(a) {
+    let s = 0;
+    bonds.forEach((b) => {
+      if (b.a === a.id) s += b.order * (ELEMENTS[a.el].en - ELEMENTS[atomById(b.b).el].en);
+      else if (b.b === a.id) s += b.order * (ELEMENTS[a.el].en - ELEMENTS[atomById(b.a).el].en);
+    });
+    return s;
+  }
+
+  // 淨偶極向量(依目前畫布幾何;方向由 δ+ 指向 δ−)
+  function dipoleOf(comp) {
+    let vx = 0;
+    let vy = 0;
+    const ids = new Set(comp.map((a) => a.id));
+    bonds.forEach((b) => {
+      if (!ids.has(b.a)) return;
+      const a1 = atomById(b.a);
+      const a2 = atomById(b.b);
+      const dEN = ELEMENTS[a2.el].en - ELEMENTS[a1.el].en;
+      const d = Math.hypot(a2.x - a1.x, a2.y - a1.y) || 1;
+      vx += ((a2.x - a1.x) / d) * dEN * b.order;
+      vy += ((a2.y - a1.y) / d) * dEN * b.order;
+    });
+    return { x: vx, y: vy, mag: Math.hypot(vx, vy) };
+  }
+
   // ---- 價電子雲(90% 機率邊界,點狀網狀分布) ----
   function mulberry32(seed) {
     return function () {
@@ -450,11 +568,44 @@
     };
   }
 
+  const CLOUD_RED = '#e03131'; // δ−(電子密度高)
+  const CLOUD_BLUE = '#3b82f6'; // δ+(電子密度低)
+  const CLOUD_NEUTRAL = '#5c7cfa';
+
+  function drawArrow(layer, x1, y1, x2, y2, color, width, withCross) {
+    layer.appendChild(el('line', { x1, y1, x2, y2, stroke: color, 'stroke-width': width }));
+    const ang = Math.atan2(y2 - y1, x2 - x1);
+    const hl = 7 + width;
+    [2.6, -2.6].forEach((da) => {
+      layer.appendChild(
+        el('line', {
+          x1: x2,
+          y1: y2,
+          x2: x2 + hl * Math.cos(ang + da),
+          y2: y2 + hl * Math.sin(ang + da),
+          stroke: color,
+          'stroke-width': width,
+          'stroke-linecap': 'round',
+        })
+      );
+    });
+    if (withCross) {
+      // 偶極箭頭的「⊕」尾巴:正端記號
+      const cl = 5;
+      const pxc = -Math.sin(ang);
+      const pyc = Math.cos(ang);
+      layer.appendChild(
+        el('line', { x1: x1 - pxc * cl, y1: y1 - pyc * cl, x2: x1 + pxc * cl, y2: y1 + pyc * cl, stroke: color, 'stroke-width': width })
+      );
+    }
+  }
+
   function drawCloud(layer) {
-    const DOT = { fill: '#5c7cfa', 'fill-opacity': 0.3 };
     atoms.forEach((a) => {
       const info = ELEMENTS[a.el];
       const d = derived(a);
+      const pull = pullOf(a);
+      const color = pull > 0.2 ? CLOUD_RED : pull < -0.2 ? CLOUD_BLUE : CLOUD_NEUTRAL;
       const rng = mulberry32(a.id * 7919 + 13);
       const shellR = info.r + 11;
       const r90 = info.r + 24;
@@ -464,25 +615,47 @@
           cy: a.y,
           r: r90,
           fill: 'none',
-          stroke: '#748ffc',
+          stroke: color,
           'stroke-width': 1,
           'stroke-dasharray': '3,5',
-          'stroke-opacity': 0.55,
+          'stroke-opacity': 0.5,
         })
       );
-      const nDots = 26 + d.nonbonding * 16;
+      // 電子密度:拉電子(δ−)雲變深變密;推電子(δ+)雲變淡
+      const nDots = Math.max(12, Math.round(26 + d.nonbonding * 16 + pull * 28));
       for (let i = 0; i < nDots; i++) {
         const ang = rng() * Math.PI * 2;
         const rr = shellR + (rng() + rng() + rng() - 1.5) * 9;
         if (rr > r90 || rr < info.r * 0.55) continue;
         layer.appendChild(
-          el('circle', { cx: a.x + rr * Math.cos(ang), cy: a.y + rr * Math.sin(ang), r: 1.1, ...DOT })
+          el('circle', {
+            cx: a.x + rr * Math.cos(ang),
+            cy: a.y + rr * Math.sin(ang),
+            r: 1.15,
+            fill: color,
+            'fill-opacity': pull > 0.2 ? 0.42 : 0.3,
+          })
         );
+      }
+      if (pull > 0.2 || pull < -0.2) {
+        const lp = polar(a.x, a.y, info.r + 32, 135);
+        const t = el('text', {
+          x: lp.x,
+          y: lp.y,
+          'text-anchor': 'middle',
+          'font-size': 13,
+          'font-weight': 700,
+          fill: color,
+        });
+        t.textContent = pull > 0 ? 'δ−' : 'δ+';
+        layer.appendChild(t);
       }
     });
     bonds.forEach((b) => {
       const a1 = atomById(b.a);
       const a2 = atomById(b.b);
+      const dEN = ELEMENTS[a2.el].en - ELEMENTS[a1.el].en; // >0:a2 是 δ−
+      const polarBond = Math.abs(dEN) >= 0.4;
       const rng = mulberry32((b.a * 31 + b.b) * 2711 + 7);
       const dx = a2.x - a1.x;
       const dy = a2.y - a1.y;
@@ -493,12 +666,48 @@
       const py = ux;
       const spread = 6 + 3 * b.order;
       const nDots = 40 * b.order;
+      const bias = Math.max(-1, Math.min(1, dEN)) * 0.1; // 雲往電負度大的一端偏
       for (let i = 0; i < nDots; i++) {
-        const t = (rng() - 0.5) * 0.6;
+        const t = (rng() - 0.5) * 0.6 + bias;
         const w = (rng() + rng() + rng() - 1.5) * spread;
         const cx = (a1.x + a2.x) / 2 + t * len * ux + w * px;
         const cy = (a1.y + a2.y) / 2 + t * len * uy + w * py;
-        layer.appendChild(el('circle', { cx, cy, r: 1.1, fill: '#5c7cfa', 'fill-opacity': 0.3 }));
+        let color = CLOUD_NEUTRAL;
+        if (polarBond) color = (t > 0 ? dEN > 0 : dEN < 0) ? CLOUD_RED : CLOUD_BLUE;
+        layer.appendChild(el('circle', { cx, cy, r: 1.15, fill: color, 'fill-opacity': 0.32 }));
+      }
+      // 鍵偶極箭頭(δ+ ⊕→ δ−)
+      if (polarBond) {
+        const mx = (a1.x + a2.x) / 2 + px * 30;
+        const my = (a1.y + a2.y) / 2 + py * 30;
+        const dir = dEN > 0 ? 1 : -1;
+        drawArrow(layer, mx - ux * 16 * dir, my - uy * 16 * dir, mx + ux * 16 * dir, my + uy * 16 * dir, '#495057', 1.6, true);
+      }
+    });
+    // 每個分子的淨偶極
+    components().forEach((comp) => {
+      if (comp.length < 2) return;
+      const dip = dipoleOf(comp);
+      const cx = comp.reduce((s, a) => s + a.x, 0) / comp.length;
+      const cy = comp.reduce((s, a) => s + a.y, 0) / comp.length;
+      const topY = Math.min(...comp.map((a) => a.y)) - 52;
+      if (dip.mag >= 0.35) {
+        const ux = dip.x / dip.mag;
+        const uy = dip.y / dip.mag;
+        const L2 = 26 + Math.min(30, dip.mag * 14);
+        drawArrow(layer, cx - ux * L2, cy - uy * L2, cx + ux * L2, cy + uy * L2, '#e8940a', 2.6, true);
+        const t = el('text', { x: cx, y: topY, 'text-anchor': 'middle', 'font-size': 12.5, 'font-weight': 700, fill: '#e8940a' });
+        t.textContent = '淨偶極 μ ≠ 0 → 極性分子';
+        layer.appendChild(t);
+      } else {
+        const anyPolarBond = bonds.some((b) => {
+          const ids = new Set(comp.map((a) => a.id));
+          if (!ids.has(b.a)) return false;
+          return Math.abs(ELEMENTS[atomById(b.a).el].en - ELEMENTS[atomById(b.b).el].en) >= 0.4;
+        });
+        const t = el('text', { x: cx, y: topY, 'text-anchor': 'middle', 'font-size': 12.5, 'font-weight': 700, fill: '#4c6ef5' });
+        t.textContent = anyPolarBond ? '鍵偶極對稱抵銷 → 非極性分子' : '鍵無極性 → 非極性分子';
+        layer.appendChild(t);
       }
     });
   }
@@ -605,8 +814,10 @@
       }, 0);
       let name = target ? target.label : formulaDisplay(counts);
       if (net !== 0) name += net > 0 ? `(離子,電荷 +${net})` : `(離子,電荷 −${-net})`;
+      const dip = dipoleOf(comp);
+      const polarText = dip.mag >= 0.35 ? ',依目前幾何為<b>極性分子</b>' : ',依目前幾何為<b>非極性分子</b>';
       if (allSat && net === 0) {
-        lines.push(`${meter(0)} ✓ <b>${name}</b> — 每個原子都達成八隅體(H 為二隅體),能量低、結構穩定,可以存在!`);
+        lines.push(`${meter(0)} ✓ <b>${name}</b> — 每個原子都達成八隅體(H 為二隅體),能量低、結構穩定,可以存在${polarText}(先按⚛最佳化再判斷極性才準)。`);
       } else if (allSat) {
         lines.push(`${meter(Math.max(penalty, 1))} ✓ <b>${name}</b> — 八隅體完成但整體帶電,是離子:能量稍高,通常要和相反電荷的離子一起存在。`);
       } else {
@@ -633,6 +844,27 @@
     readoutEl.innerHTML = lines.length
       ? lines.map((l) => `<div>${l}</div>`).join('')
       : '<div>畫布是空的。</div>';
+
+    // 幾何面板:鍵長與鍵角
+    const geomEl = document.getElementById('geom-panel');
+    if (geomEl) {
+      const { bondsInfo, angles } = geometryInfo();
+      if (bondsInfo.length === 0) {
+        geomEl.innerHTML =
+          '<h4>目前的幾何:鍵長與鍵角</h4><p class="tiny">接出鍵之後,這裡與畫布上會即時顯示鍵長(相對單位)與鍵角;按「⚛ 鍵長最佳化」讓它們收斂到平衡值。</p>';
+      } else {
+        const bl = bondsInfo
+          .map((b) => `${b.label}:${b.len.toFixed(0)}(平衡 ${b.r0.toFixed(0)})`)
+          .join('<br>');
+        const al = angles.length
+          ? angles.map((a2) => `${a2.label}:${a2.deg.toFixed(1)}°`).join('<br>')
+          : '(尚無鍵角:需要一個原子接兩個以上的鍵)';
+        geomEl.innerHTML =
+          `<h4>目前的幾何:鍵長與鍵角</h4>` +
+          `<p class="tiny"><b>鍵長</b>(相對單位,括號為平衡值;鍵級越高越短)<br>${bl}</p>` +
+          `<p class="tiny"><b>鍵角</b><br>${al}</p>`;
+      }
+    }
 
     // 選取原子面板
     const a = atomById(selectedId);
@@ -674,6 +906,7 @@
 
     drawTrash(bondLayer);
     if (cloudOn) drawCloud(bondLayer);
+    drawGeometryLabels(bondLayer);
 
     bonds.forEach((b) => {
       const a1 = atomById(b.a);
@@ -817,6 +1050,10 @@
       nameDiv.className = 'pname';
       nameDiv.textContent = `${info.name}·價電子${info.valence}`;
       btn.appendChild(nameDiv);
+      const enDiv = document.createElement('div');
+      enDiv.className = 'pname pen';
+      enDiv.textContent = `電負度 ${info.en.toFixed(2)}`;
+      btn.appendChild(enDiv);
       // 按住拖進畫布;只點一下則自動放入
       btn.addEventListener('pointerdown', (e) => {
         paletteDrag = { key, sx: e.clientX, sy: e.clientY, spawned: false };

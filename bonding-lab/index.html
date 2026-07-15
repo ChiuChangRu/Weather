@@ -4,15 +4,15 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>化學鍵結互動教學 — 共價鍵形成 與 LCAO 分子軌域理論</title>
-<link rel="stylesheet" href="style.css?v=6" />
+<link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body>
 
 <header class="app-header">
   <div class="header-row">
     <figure class="pauling-fig">
-      <img src="pauling.png?v=6" alt="Linus Pauling 與分子模型" class="pauling-img"
-           onerror="this.onerror=null;this.src='pauling.svg'" />
+      <img src="pauling.png?v=7" alt="Linus Pauling" class="pauling-img"
+           onerror="if(!this.dataset.f){this.dataset.f=1;this.src='https://commons.wikimedia.org/wiki/Special:FilePath/Linus%20Pauling%201962.jpg?width=300';}else{this.onerror=null;this.src='pauling.svg';}" />
       <figcaption>Linus Pauling<br>《化學鍵的本質》</figcaption>
     </figure>
     <div>
@@ -29,13 +29,6 @@
 
 <main>
   <section id="tab-lewis" class="tab-panel active">
-    <p class="panel-intro">
-      從左側「原子盒」把原子<b>拖進畫布</b>（點一下也會自動放入）。每個原子都畫出它的價電子：成對的是<b>孤對電子</b>、單獨的是<b>未配對電子</b>（可以成鍵）。
-      拖曳兩個原子靠近，未配對電子會互相配對成<b>共用電子對</b>（黃底）形成共價鍵；點一下鍵可升級為雙鍵／三鍵（兩端都要還有未配對電子）。
-      點選原子可查看<b>形式電荷</b>的計算，並可增減電子做出離子；不要的原子拖到右下角<b>垃圾桶</b>即可刪除。
-      下方的<b>能量條</b>會告訴你目前的結構穩不穩定 —— 只有能量低的穩定結構才會存在！試著完成上方的目標分子！
-    </p>
-
     <div class="lewis-layout">
       <aside class="palette">
         <div class="palette-title">原子盒</div>
@@ -51,59 +44,70 @@
             ⚛ 鍵長最佳化（簡易計算）
           </button>
           <button id="btn-cloud" class="tool-btn"
-            title="以半透明點狀(網狀)分布顯示價電子雲,虛線圈約為 90% 機率邊界;鍵上的雲較密,代表共用電子">
-            ☁ 電子雲（90%）
+            title="以半透明點狀(網狀)分布顯示價電子雲:紅=δ−(電子密度高)、藍=δ+(電子密度低),並畫出鍵偶極與淨偶極箭頭判斷極性分子">
+            ☁ 電子雲與極性
           </button>
         </div>
         <svg id="lewis-stage" viewBox="0 0 760 520" preserveAspectRatio="xMidYMid meet"></svg>
-        <p class="legend">
-          單獨黑點＝未配對電子（可成鍵）　黑點成對＝孤對電子　黃底電子對＝共用電子對（共價鍵）
-          綠框＝八隅體完成（穩定）　橘框＝還有未配對電子（不穩定）　紅＋／藍−徽章＝形式電荷
-        </p>
-        <p id="lewis-status" class="status-line">先從左側加入原子吧！</p>
+        <p id="lewis-status" class="status-line">先從左側把原子拖進畫布吧！</p>
         <div id="component-readout" class="readout"></div>
       </div>
 
       <aside class="info-panel">
         <div class="info-card" id="selected-panel"></div>
+        <div class="info-card" id="geom-panel"></div>
         <div class="info-card">
-          <h4>價電子 與 可成鍵數 的關係</h4>
+          <h4>價電子・可成鍵數・電負度</h4>
           <table class="ref">
-            <thead><tr><th>原子</th><th>價電子 V</th><th>未配對<br>(=可成鍵數)</th><th>孤對</th></tr></thead>
+            <thead><tr><th>原子</th><th>價電子</th><th>可成鍵</th><th>孤對</th><th>電負度</th></tr></thead>
             <tbody>
-              <tr><td>H</td><td>1</td><td>1</td><td>0</td></tr>
-              <tr><td>C</td><td>4</td><td>4</td><td>0</td></tr>
-              <tr><td>N</td><td>5</td><td>3</td><td>1</td></tr>
-              <tr><td>O</td><td>6</td><td>2</td><td>2</td></tr>
+              <tr><td>H</td><td>1</td><td>1</td><td>0</td><td>2.20</td></tr>
+              <tr><td>C</td><td>4</td><td>4</td><td>0</td><td>2.55</td></tr>
+              <tr><td>N</td><td>5</td><td>3</td><td>1</td><td>3.04</td></tr>
+              <tr><td>O</td><td>6</td><td>2</td><td>2</td><td>3.44</td></tr>
             </tbody>
           </table>
           <p class="tiny">
-            可成鍵數 ＝ 未配對電子數 ＝ 8 − 價電子數（H 為 2 − 1 ＝ 1）。
-            這就是各元素的「化合價」：H 接 1 個鍵、O 接 2 個、N 接 3 個、C 接 4 個 ——
-            所以水是 H₂O、氨是 NH₃、甲烷是 CH₄。
+            可成鍵數＝未配對電子數＝8−價電子數（H 為 2−1＝1）——這就是化合價。
+            <b>電負度</b>大的原子會把共用電子「拉」過去（δ−），小的被「推」走（δ+）；
+            電負度差越大鍵越極性，但整個分子是否極性還要看<b>形狀</b>會不會讓鍵偶極抵銷——用「☁ 電子雲與極性」按鈕檢驗。
           </p>
         </div>
         <div class="info-card">
           <h4>形式電荷</h4>
           <p class="tiny">
-            FC ＝ V − N − B<br>
-            V：原子本來的價電子數<br>
-            N：非鍵結電子數（孤對＋未配對）<br>
-            B：鍵結數（共用電子對的數目）<br>
-            中性分子裡每個原子的 FC 通常是 0。
-            試試看：選取原子按「−1 e⁻」再接氫，做出 H₃O⁺；或按「＋1 e⁻」做出 OH⁻。
+            FC ＝ V − N − B（V 價電子、N 非鍵結電子、B 鍵結數）。
+            中性分子裡通常為 0。試試：選取 O 按「−1 e⁻」再接三個 H 做出 H₃O⁺。
           </p>
         </div>
+        <details class="info-card">
+          <summary>📖 操作說明</summary>
+          <p class="tiny">
+            把原子從原子盒<b>拖進畫布</b>（點一下也會自動放入）。拖兩個原子靠近，未配對電子會配成<b>共用電子對</b>形成共價鍵；
+            點鍵可升級雙鍵／三鍵；拖遠斷鍵；拖到右下角垃圾桶刪除。
+            點選原子看形式電荷並可增減電子做離子。能量條顯示結構穩定度——只有能量低的穩定結構才會存在。
+          </p>
+        </details>
+        <details class="info-card">
+          <summary>🔍 圖例</summary>
+          <p class="tiny">
+            單獨黑點＝未配對電子（可成鍵）／黑點成對＝孤對電子／黃底電子對＝共用電子對（共價鍵）。
+            綠框＝八隅體完成（穩定）；橘框＝還有未配對電子（不穩定）；紅＋／藍−徽章＝形式電荷。
+            電子雲模式：紅雲＝δ−、藍雲＝δ+；⊕→ 箭頭由 δ+ 指向 δ−（鍵偶極），橙色大箭頭＝淨偶極。
+            灰色數字＝鍵長（相對單位）與鍵角。
+          </p>
+        </details>
       </aside>
     </div>
   </section>
 
   <section id="tab-lcao" class="tab-panel">
-    <p class="panel-intro">
+    <details class="side-note">
+      <summary>ℹ️ LCAO 原理說明</summary>
       原子軌域波函數依相位相加（同相 → 建設性干涉 → 鍵結軌域）或相減
       （異相 → 破壞性干涉 → 反鍵結軌域，中間出現節面）線性組合成分子軌域（LCAO-MO）。
       調整軌域類型、原子核間距與電子數，觀察鍵級與穩定性的變化。
-    </p>
+    </details>
 
     <div class="lcao-controls">
       <div class="control-group">
@@ -153,10 +157,11 @@
 
     <div class="panel-box full-width">
       <h3>真實量子計算：H₂ 的 Hartree–Fock 能量曲線（STO-3G 基底）</h3>
-      <p class="tiny" style="text-align:center">
-        這不是示意圖，是貨真價實的從頭計算（ab initio）：程式即時計算高斯基底函數的重疊、動能、
-        核吸引與電子互斥積分，組出 Hartree–Fock 能量，掃描不同核間距 R 找出能量最低的平衡鍵長。
-      </p>
+      <details class="side-note">
+        <summary>ℹ️ 這是真的計算,不是示意圖</summary>
+        程式即時計算高斯基底函數的重疊、動能、核吸引與電子互斥積分，組出 Hartree–Fock 能量，
+        掃描不同核間距 R 找出能量最低的平衡鍵長（ab initio 從頭計算）。
+      </details>
       <div class="canvas-tools" style="justify-content:center">
         <button id="btn-hf" class="tool-btn">▶ 執行 H₂ Hartree–Fock 計算</button>
       </div>
@@ -166,10 +171,11 @@
 
     <div class="panel-box full-width">
       <h3>分子振動模式 與 IR 紅外光譜</h3>
-      <p class="tiny" style="text-align:center">
+      <details class="side-note">
+        <summary>ℹ️ 振動與 IR 吸收的條件</summary>
         分子會像彈簧一樣振動。振動若會<b>改變偶極矩</b>就能吸收紅外光（IR 活躍），在光譜上出現吸收峰。
         H₂ 的振動頻率不是查表 —— 是把上面 Hartree–Fock 能量曲線在谷底做二階微分（諧振子近似）即時算出來的。
-      </p>
+      </details>
       <div class="canvas-tools" style="justify-content:center">
         <div class="orbital-buttons" id="vib-mol-buttons"></div>
       </div>
@@ -178,8 +184,39 @@
       </div>
       <svg id="svg-vib" viewBox="0 0 440 190" style="max-width:460px;margin:0 auto;display:block"></svg>
       <p id="vib-text" class="status-line"></p>
-      <h3 style="margin-top:10px">IR 光譜（穿透率 %T,x 軸依慣例由高波數往低）</h3>
+      <h3 style="margin-top:10px">IR 光譜 疊上 地球熱輻射 與 太陽輻射（穿透率 %T,x 軸依慣例由高波數往低）</h3>
       <svg id="svg-ir" viewBox="0 0 900 220"></svg>
+      <p class="tiny" style="text-align:center">
+        想一想：哪些氣體的吸收峰正好落在<span style="color:#e8940a;font-weight:700">地球熱輻射（橙色）</span>的範圍內？
+        那些氣體會攔下地球往外散的熱，會發生什麼事？用下面的氣體清單自己判斷。
+      </p>
+    </div>
+
+    <div class="ref-cards">
+      <div class="info-card">
+        <h4>常見小分子氣體 — 哪些會吸收地球的紅外輻射？</h4>
+        <p class="tiny">
+          N₂、O₂、Ar、H₂、CO₂、CH₄、H₂O（水蒸氣）、N₂O、O₃、CO、NH₃、SO₂<br><br>
+          <b>判斷步驟</b>：①這個分子有沒有「會改變偶極矩」的振動？（單原子的 Ar 連振動都沒有；同核雙原子呢？）
+          ②它的吸收峰落在地球熱輻射的範圍嗎？——用上面的振動/IR 面板與電子雲極性工具自己檢驗，不要用背的！
+        </p>
+      </div>
+      <div class="info-card">
+        <h4>常見的酸</h4>
+        <p class="tiny">
+          <b>強酸</b>：HCl、HBr、HI、H₂SO₄、HNO₃、HClO₄<br>
+          <b>弱酸</b>：CH₃COOH（醋酸）、H₂CO₃（碳酸）、HF、H₃PO₄、H₂S<br><br>
+          注意：HF 的 H–F 鍵極性超大（EN 差 1.78），卻是弱酸——酸強度看的是解離平衡，不只是鍵極性。
+        </p>
+      </div>
+      <div class="info-card">
+        <h4>常見的鹼</h4>
+        <p class="tiny">
+          <b>強鹼</b>：NaOH、KOH、Ca(OH)₂、Ba(OH)₂<br>
+          <b>弱鹼</b>：NH₃（氨水）、CH₃NH₂（甲胺）、C₅H₅N（吡啶）<br><br>
+          NH₃ 在第一分頁就做得出來——它的孤對電子正是它當鹼（接受 H⁺ 變 NH₄⁺）的原因。
+        </p>
+      </div>
     </div>
   </section>
 </main>
@@ -188,8 +225,8 @@
   <p>多數圖示為教學用簡化示意；「H₂ Hartree–Fock」面板為真實的從頭計算（RHF／STO-3G）。</p>
 </footer>
 
-<script src="main.js?v=6"></script>
-<script src="lewis.js?v=6"></script>
-<script src="lcao.js?v=6"></script>
+<script src="main.js?v=7"></script>
+<script src="lewis.js?v=7"></script>
+<script src="lcao.js?v=7"></script>
 </body>
 </html>
