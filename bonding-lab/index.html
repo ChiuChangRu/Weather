@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>化學鍵結互動教學 — 共價鍵形成 與 LCAO 分子軌域理論</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="app-header">
+  <h1>化學鍵結互動教學</h1>
+  <p class="subtitle">普通化學 · 共價鍵形成 &amp; LCAO 分子軌域理論</p>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button class="tab-btn active" data-tab="lewis" role="tab" aria-selected="true">① 拖拉共價鍵模擬</button>
+  <button class="tab-btn" data-tab="lcao" role="tab" aria-selected="false">② LCAO 分子軌域理論</button>
+</nav>
+
+<main>
+  <section id="tab-lewis" class="tab-panel active">
+    <p class="panel-intro">
+      選擇一個分子，把散落的原子拖曳靠近，觀察價電子如何配對形成共價鍵、
+      以及孤對電子如何分布，驗證路易斯結構與化合價。
+    </p>
+
+    <div class="lewis-controls">
+      <div class="molecule-buttons" id="molecule-buttons"></div>
+      <button id="lewis-reset" class="btn-secondary">重置</button>
+    </div>
+
+    <div class="lewis-stage-wrap">
+      <svg id="lewis-stage" viewBox="0 0 900 520" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+
+    <p id="lewis-status" class="status-line">請選擇一個分子開始。</p>
+  </section>
+
+  <section id="tab-lcao" class="tab-panel">
+    <p class="panel-intro">
+      原子軌域波函數依相位相加（同相 → 建設性干涉 → 鍵結軌域）或相減
+      （異相 → 破壞性干涉 → 反鍵結軌域，中間出現節面）線性組合成分子軌域（LCAO-MO）。
+      調整軌域類型、原子核間距與電子數，觀察鍵級與穩定性的變化。
+    </p>
+
+    <div class="lcao-controls">
+      <div class="control-group">
+        <label>軌域組合類型</label>
+        <div class="orbital-buttons" id="orbital-buttons"></div>
+      </div>
+      <div class="control-group">
+        <label for="distance-slider">原子核間距 R</label>
+        <input type="range" id="distance-slider" min="60" max="220" value="120" step="1" />
+      </div>
+      <div class="control-group">
+        <label for="electron-select">填入電子數（此組軌域）</label>
+        <select id="electron-select">
+          <option value="0">0</option>
+          <option value="1">1</option>
+          <option value="2" selected>2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+        </select>
+      </div>
+    </div>
+
+    <p class="legend">橙色 = 正相位（+）　藍色 = 負相位（−）　虛線 = 節面（電子機率為零之處）</p>
+
+    <div class="orbital-panels">
+      <div class="panel-box">
+        <h3>鍵結分子軌域（同相疊加，建設性干涉）</h3>
+        <svg id="svg-bonding" viewBox="0 0 440 240"></svg>
+      </div>
+      <div class="panel-box">
+        <h3>反鍵結分子軌域（異相疊加，破壞性干涉，出現節面）</h3>
+        <svg id="svg-antibonding" viewBox="0 0 440 240"></svg>
+      </div>
+    </div>
+
+    <div class="panel-box full-width">
+      <h3>分子軌域能階圖與電子填入</h3>
+      <svg id="svg-energy" viewBox="0 0 900 260"></svg>
+      <p id="bond-order-text" class="status-line"></p>
+    </div>
+
+    <div class="panel-box full-width">
+      <h3>位能 vs. 原子核間距（示意圖）</h3>
+      <svg id="svg-curve" viewBox="0 0 900 180"></svg>
+      <p id="curve-text" class="status-line"></p>
+    </div>
+  </section>
+</main>
+
+<footer class="app-footer">
+  <p>教學用簡化示意圖，非精確量子力學計算結果。</p>
+</footer>
+
+<script src="main.js"></script>
+<script src="lewis.js"></script>
+<script src="lcao.js"></script>
+</body>
+</html>
