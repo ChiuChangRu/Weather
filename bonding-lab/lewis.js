@@ -795,9 +795,9 @@
   let mol3D = null; // { atoms:[{id,el,x,y,z}], bonds, phantoms:{id:[{x,y,z},...]} }
   let modes3D = [];
   let selectedMode = 0;
-  const view3D = { rotX: -0.35, rotY: 0.6 };
   let vibPlaying = false;
   let vibT0 = 0;
+  let vibLoopRunning = false;
 
   function jacobiEigen(Ain, maxSweeps) {
     const n = Ain.length;
@@ -1130,96 +1130,97 @@
 
   function build3DAndVibrations() {
     mol3D = build3DGeometry();
-    modes3D = computeNormalModes(mol3D);
+    const allModes = computeNormalModes(mol3D);
+    modes3D = importantModes(allModes);
     selectedMode = 0;
     // 立刻自動播放第一個振動模式,不用等使用者按按鈕才看得到動畫
     vibPlaying = modes3D.length > 0;
     vibT0 = performance.now();
     renderVibPanel();
-    if (vibPlaying) requestAnimationFrame(renderMolecule3D);
-    else renderMolecule3D();
+    startVibLoop();
   }
 
-  // ---- 3D 檢視器(可拖曳旋轉) ----
-  function project3D(p) {
-    const cy = Math.cos(view3D.rotY), sy = Math.sin(view3D.rotY);
-    const cx = Math.cos(view3D.rotX), sx = Math.sin(view3D.rotX);
-    const x1 = p.x * cy + p.z * sy;
-    const z1 = -p.x * sy + p.z * cy;
-    const y1 = p.y * cx - z1 * sx;
-    const z2 = p.y * sx + z1 * cx;
-    return { x: x1, y: y1, z: z2 };
+  // 只要 vibPlaying 是 true,就持續重繪主畫布做出振動動畫;停止時自然結束,不留下多餘的 rAF
+  function startVibLoop() {
+    if (vibLoopRunning) return;
+    vibLoopRunning = true;
+    const loop = () => {
+      if (!vibPlaying) {
+        vibLoopRunning = false;
+        return;
+      }
+      render();
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
   }
 
-  function currentMol3DPositions() {
-    if (!mol3D) return [];
-    if (!vibPlaying || !modes3D[selectedMode]) return mol3D.atoms.map((a) => ({ ...a }));
-    const mode = modes3D[selectedMode];
-    const t = (performance.now() - vibT0) / 220;
-    const amp = 0.45 * Math.sin(t);
-    return mol3D.atoms.map((a, i) => ({
-      id: a.id,
-      el: a.el,
-      x: a.x + mode.disp[i].x * amp,
-      y: a.y + mode.disp[i].y * amp,
-      z: a.z + mode.disp[i].z * amp,
-    }));
-  }
-
-  function renderMolecule3D() {
-    const svg = document.getElementById('svg-3d');
-    if (!svg || !mol3D) return;
-    svg.innerHTML = '';
-    const W = 280, H = 260, cx = W / 2, cyc = H / 2;
-    const scale = 62;
-    const positions = currentMol3DPositions().map((a) => ({ ...a, proj: project3D(a) }));
-    const g = el('g', {});
-    // 畫鍵(依兩端平均深度排序,再與原子一起做繪圖器演算法排序)
-    const bondDraw = mol3D.bonds.map((b) => {
-      const p1 = positions.find((x) => x.id === b.a);
-      const p2 = positions.find((x) => x.id === b.b);
-      return { b, p1, p2, z: (p1.proj.z + p2.proj.z) / 2 };
-    });
-    const drawList = [...bondDraw.map((x) => ({ kind: 'bond', z: x.z, data: x })), ...positions.map((p) => ({ kind: 'atom', z: p.proj.z, data: p }))];
-    drawList.sort((a, b) => a.z - b.z);
-    drawList.forEach((item) => {
-      if (item.kind === 'bond') {
-        const { p1, p2 } = item.data;
-        const x1 = cx + p1.proj.x * scale, y1 = cyc - p1.proj.y * scale;
-        const x2 = cx + p2.proj.x * scale, y2 = cyc - p2.proj.y * scale;
-        g.appendChild(el('line', { x1, y1, x2, y2, stroke: '#8a8f9c', 'stroke-width': 5 }));
+  // 只留下有教學意義的模式:同一種鍵/類型且頻率相近的簡併模式合併成一個代表,
+  // 並濾掉這個簡化力場常見的低頻扭轉/平面外雜訊模式(通常 <150 cm⁻¹,真正的鍵伸縮/彎曲都遠高於此)
+  function importantModes(modes) {
+    if (modes.length === 0) return [];
+    const groups = [];
+    modes.forEach((m) => {
+      const g = groups.find(
+        (gr) => gr.type === m.type && gr.bondLabel === m.bondLabel && Math.abs(gr.freq - m.freq) < Math.max(10, gr.freq * 0.02)
+      );
+      if (g) {
+        g.freq = (g.freq * g.count + m.freq) / (g.count + 1);
+        g.count++;
       } else {
-        const a = item.data;
-        const depthScale = 1 + a.proj.z * 0.12;
-        const r = (a.el === 'H' ? 9 : 13) * depthScale;
-        const x = cx + a.proj.x * scale, y = cyc - a.proj.y * scale;
-        g.appendChild(el('circle', { cx: x, cy: y, r, fill: ELEMENTS[a.el].color, stroke: '#555', 'stroke-width': 1.3 }));
-        const t = el('text', { x, y, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': r * 0.85, 'font-weight': 700, fill: '#222' });
-        t.textContent = a.el;
-        g.appendChild(t);
+        groups.push({ freq: m.freq, type: m.type, bondLabel: m.bondLabel, count: 1, disp: m.disp });
       }
     });
-    svg.appendChild(g);
-    if (vibPlaying) requestAnimationFrame(renderMolecule3D);
+    const floor = Math.max(150, groups[0].freq * 0.06);
+    const kept = groups.filter((g) => g.freq >= floor);
+    return (kept.length ? kept : [groups[0]]).sort((a, b) => b.freq - a.freq);
   }
 
-  function initVib3DDrag() {
-    const svg = document.getElementById('svg-3d');
-    if (!svg) return;
-    let rotating = null;
-    svg.addEventListener('pointerdown', (e) => {
-      rotating = { sx: e.clientX, sy: e.clientY, rx: view3D.rotX, ry: view3D.rotY };
+  // 把 3D 模式的位移,依「沿著每個鍵在畫布上的實際方向」投影回 2D,
+  // 這樣主畫布上的動畫看起來跟畫面上的鍵是一致的(伸縮沿著畫面上的鍵、同相/異相關係也保留)
+  function vib2DOffset(atomId, mode) {
+    if (!mode || !mol3D) return { x: 0, y: 0 };
+    const idx3 = mol3D.atoms.findIndex((a) => a.id === atomId);
+    if (idx3 < 0) return { x: 0, y: 0 };
+    let ox = 0, oy = 0;
+    mol3D.bonds.forEach((b) => {
+      if (b.a !== atomId && b.b !== atomId) return;
+      const otherId = b.a === atomId ? b.b : b.a;
+      const idxOther = mol3D.atoms.findIndex((a) => a.id === otherId);
+      if (idxOther < 0) return;
+      const a3 = mol3D.atoms[idx3], o3 = mol3D.atoms[idxOther];
+      const bn = norm3(a3.x - o3.x, a3.y - o3.y, a3.z - o3.z);
+      const dDisp = {
+        x: mode.disp[idx3].x - mode.disp[idxOther].x,
+        y: mode.disp[idx3].y - mode.disp[idxOther].y,
+        z: mode.disp[idx3].z - mode.disp[idxOther].z,
+      };
+      const rate = dDisp.x * bn.x + dDisp.y * bn.y + dDisp.z * bn.z; // >0:遠離該鍵夥伴
+      const a2 = atomById(atomId), o2 = atomById(otherId);
+      if (!a2 || !o2) return;
+      const d2x = a2.x - o2.x, d2y = a2.y - o2.y;
+      const len2 = Math.hypot(d2x, d2y) || 1;
+      ox += (d2x / len2) * rate;
+      oy += (d2y / len2) * rate;
     });
-    window.addEventListener('pointermove', (e) => {
-      if (!rotating) return;
-      view3D.rotY = rotating.ry + (e.clientX - rotating.sx) * 0.012;
-      view3D.rotX = Math.max(-1.4, Math.min(1.4, rotating.rx + (e.clientY - rotating.sy) * 0.012));
-      if (!vibPlaying) renderMolecule3D();
-    });
-    window.addEventListener('pointerup', () => { rotating = null; });
+    return { x: ox, y: oy };
   }
 
-  // ---- 振動模式面板:按下後在小型頻譜軸標出位置,並播放 3D 動畫 ----
+  // 目前這一幀,每個原子在主畫布上應該多加的振動位移(px)
+  function currentVibOffsets() {
+    const offsets = new Map();
+    if (!vibPlaying || !mol3D || !modes3D[selectedMode]) return offsets;
+    const mode = modes3D[selectedMode];
+    const t = (performance.now() - vibT0) / 220;
+    const amp = 22 * Math.sin(t);
+    atoms.forEach((a) => {
+      if (!rigidAtoms.has(a.id)) return;
+      const off = vib2DOffset(a.id, mode);
+      offsets.set(a.id, { dx: off.x * amp, dy: off.y * amp });
+    });
+    return offsets;
+  }
+
   function drawMiniSpectrum(freq) {
     const svg = document.getElementById('svg-vib-axis');
     if (!svg) return;
@@ -1252,24 +1253,22 @@
     if (!wrap) return;
     wrap.innerHTML = '';
     if (!mol3D || modes3D.length === 0) {
-      wrap.innerHTML = '<p class="tiny">按「⚛ 鍵長最佳化」後,這裡會列出這顆分子真正算出來的振動模式(依真實原子質量與鍵力常數,對位能面做 Hessian 對角化)。</p>';
+      wrap.innerHTML = '<p class="tiny">按「⚛ 鍵長最佳化」後,這裡會列出這顆分子真正算出來的重要振動模式(依真實原子質量與鍵力常數,對位能面做 Hessian 對角化;簡併模式與雜訊模式已自動省略),動畫會直接顯示在左邊的分子上。</p>';
       if (axisWrap) axisWrap.style.display = 'none';
-      const svg3d = document.getElementById('svg-3d');
-      if (svg3d) svg3d.innerHTML = '';
       return;
     }
     if (axisWrap) axisWrap.style.display = '';
     modes3D.forEach((m, i) => {
       const btn = document.createElement('button');
       btn.className = 'orb-btn vib-btn' + (i === selectedMode ? ' active' : '');
-      btn.textContent = `${m.bondLabel || ''} ${m.type} ${m.freq.toFixed(0)} cm⁻¹`;
+      btn.textContent = `${m.bondLabel || ''} ${m.type} ${m.freq.toFixed(0)} cm⁻¹${m.count > 1 ? `(${m.count}重簡併)` : ''}`;
       btn.addEventListener('click', () => {
         selectedMode = i;
         vibPlaying = true;
         vibT0 = performance.now();
         renderVibPanel();
         drawMiniSpectrum(m.freq);
-        requestAnimationFrame(renderMolecule3D);
+        startVibLoop();
       });
       wrap.appendChild(btn);
     });
@@ -1462,6 +1461,14 @@
   }
 
   function render() {
+    // 振動動畫:暫時把鎖定原子的顯示位置加上振動位移,畫完再還原,
+    // 這樣真正儲存的座標(a.x/a.y)完全不變,分子還是鎖定不動的
+    const vibOffsets = currentVibOffsets();
+    vibOffsets.forEach((off, id) => {
+      const a = atomById(id);
+      if (a) { a.x += off.dx; a.y += off.dy; }
+    });
+
     stage.innerHTML = '';
     const bondLayer = el('g', {});
     const atomLayer = el('g', {});
@@ -1580,6 +1587,11 @@
         e.preventDefault();
       });
       atomLayer.appendChild(g);
+    });
+
+    vibOffsets.forEach((off, id) => {
+      const a = atomById(id);
+      if (a) { a.x -= off.dx; a.y -= off.dy; }
     });
 
     updatePanels();
@@ -1718,8 +1730,6 @@
     };
     document.addEventListener('pointerup', endDrag);
     document.addEventListener('pointercancel', endDrag);
-
-    initVib3DDrag();
 
     // 測試用鉤子(不影響使用)
     window.__lewis = {
