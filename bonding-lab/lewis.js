@@ -1,115 +1,47 @@
 (() => {
   const SVGNS = 'http://www.w3.org/2000/svg';
-  const STAGE_W = 900, STAGE_H = 520;
-  const CENTER = { x: STAGE_W / 2, y: STAGE_H / 2 };
-  const R_BOND = 130;
-  const SNAP_DIST = 105;
-  const TWEEN_MS = 280;
+  const STAGE_W = 760;
+  const STAGE_H = 520;
 
+  // orb = 可用軌域數(決定二隅體/八隅體)；價電子先填未配對、再成對(洪德規則的簡化)
   const ELEMENTS = {
-    H: { valence: 1, color: '#aab4f7', r: 24 },
-    O: { valence: 6, color: '#f5abc9', r: 36 },
-    N: { valence: 5, color: '#a8e6b8', r: 36 },
-    C: { valence: 4, color: '#d3d3d3', r: 36 },
+    H: { valence: 1, orb: 1, color: '#aab4f7', r: 22, name: '氫' },
+    C: { valence: 4, orb: 4, color: '#d6d6d6', r: 30, name: '碳' },
+    N: { valence: 5, orb: 4, color: '#a8e6b8', r: 30, name: '氮' },
+    O: { valence: 6, orb: 4, color: '#f5abc9', r: 30, name: '氧' },
   };
 
-  const MOLECULES = {
-    H2: {
-      label: '氫氣 H₂',
-      centralId: 'a',
-      atoms: [
-        { id: 'a', el: 'H', loneAngles: [] },
-        { id: 'b', el: 'H', angle: 0, loneAngles: [] },
-      ],
-      bonds: [{ a: 'a', b: 'b', order: 1 }],
-    },
-    O2: {
-      label: '氧氣 O₂',
-      centralId: 'a',
-      atoms: [
-        { id: 'a', el: 'O', loneAngles: [90, 270] },
-        { id: 'b', el: 'O', angle: 0, loneAngles: [90, 270] },
-      ],
-      bonds: [{ a: 'a', b: 'b', order: 2 }],
-    },
-    N2: {
-      label: '氮氣 N₂',
-      centralId: 'a',
-      atoms: [
-        { id: 'a', el: 'N', loneAngles: [180] },
-        { id: 'b', el: 'N', angle: 0, loneAngles: [0] },
-      ],
-      bonds: [{ a: 'a', b: 'b', order: 3 }],
-    },
-    H2O: {
-      label: '水 H₂O',
-      centralId: 'o',
-      atoms: [
-        { id: 'o', el: 'O', loneAngles: [215, 325] },
-        { id: 'h1', el: 'H', angle: 145, loneAngles: [] },
-        { id: 'h2', el: 'H', angle: 35, loneAngles: [] },
-      ],
-      bonds: [
-        { a: 'o', b: 'h1', order: 1 },
-        { a: 'o', b: 'h2', order: 1 },
-      ],
-    },
-    NH3: {
-      label: '氨 NH₃',
-      centralId: 'n',
-      atoms: [
-        { id: 'n', el: 'N', loneAngles: [30] },
-        { id: 'h1', el: 'H', angle: 90, loneAngles: [] },
-        { id: 'h2', el: 'H', angle: 210, loneAngles: [] },
-        { id: 'h3', el: 'H', angle: 330, loneAngles: [] },
-      ],
-      bonds: [
-        { a: 'n', b: 'h1', order: 1 },
-        { a: 'n', b: 'h2', order: 1 },
-        { a: 'n', b: 'h3', order: 1 },
-      ],
-    },
-    CH4: {
-      label: '甲烷 CH₄',
-      centralId: 'c',
-      atoms: [
-        { id: 'c', el: 'C', loneAngles: [] },
-        { id: 'h1', el: 'H', angle: 45, loneAngles: [] },
-        { id: 'h2', el: 'H', angle: 135, loneAngles: [] },
-        { id: 'h3', el: 'H', angle: 225, loneAngles: [] },
-        { id: 'h4', el: 'H', angle: 315, loneAngles: [] },
-      ],
-      bonds: [
-        { a: 'c', b: 'h1', order: 1 },
-        { a: 'c', b: 'h2', order: 1 },
-        { a: 'c', b: 'h3', order: 1 },
-        { a: 'c', b: 'h4', order: 1 },
-      ],
-    },
-    CO2: {
-      label: '二氧化碳 CO₂',
-      centralId: 'c',
-      atoms: [
-        { id: 'c', el: 'C', loneAngles: [] },
-        { id: 'o1', el: 'O', angle: 180, loneAngles: [90, 270] },
-        { id: 'o2', el: 'O', angle: 0, loneAngles: [90, 270] },
-      ],
-      bonds: [
-        { a: 'c', b: 'o1', order: 2 },
-        { a: 'c', b: 'o2', order: 2 },
-      ],
-    },
-  };
+  const SUBSCRIPT = { 0: '₀', 1: '₁', 2: '₂', 3: '₃', 4: '₄', 5: '₅', 6: '₆', 7: '₇', 8: '₈', 9: '₉' };
 
-  function polar(cx, cy, radius, angleDeg) {
-    const rad = (angleDeg * Math.PI) / 180;
-    return { x: cx + radius * Math.cos(rad), y: cy - radius * Math.sin(rad) };
+  const TARGETS = [
+    { key: 'H2', label: 'H₂ 氫氣' },
+    { key: 'O2', label: 'O₂ 氧氣' },
+    { key: 'N2', label: 'N₂ 氮氣' },
+    { key: 'H2O1', label: 'H₂O 水' },
+    { key: 'H3N1', label: 'NH₃ 氨' },
+    { key: 'C1H4', label: 'CH₄ 甲烷' },
+    { key: 'C1O2', label: 'CO₂ 二氧化碳' },
+    { key: 'H2O2', label: 'H₂O₂ 過氧化氫' },
+    { key: 'C1H2O1', label: 'CH₂O 甲醛' },
+  ];
+
+  let atoms = [];
+  let bonds = [];
+  let nextId = 1;
+  let selectedId = null;
+  let drag = null;
+  const doneTargets = new Set();
+
+  let stage, statusEl, readoutEl, chipsEl, selPanelEl;
+
+  const toRad = (d) => (d * Math.PI) / 180;
+  function polar(cx, cy, radius, deg) {
+    return { x: cx + radius * Math.cos(toRad(deg)), y: cy - radius * Math.sin(toRad(deg)) };
   }
-
-  function dist(p1, p2) {
-    return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+  function angDist(a, b) {
+    const d = Math.abs(a - b) % 360;
+    return d > 180 ? 360 - d : d;
   }
-
   function el(tag, attrs, children) {
     const node = document.createElementNS(SVGNS, tag);
     for (const k in attrs) node.setAttribute(k, attrs[k]);
@@ -117,12 +49,81 @@
     return node;
   }
 
-  let stage, statusEl, moleculeButtonsEl, resetBtn;
-  let currentDef = null;
-  let atomsState = {};
-  let bondsState = [];
-  let dragging = null;
-  let rafId = null;
+  function atomById(id) {
+    return atoms.find((a) => a.id === id);
+  }
+  function bondBetween(id1, id2) {
+    return bonds.find((b) => (b.a === id1 && b.b === id2) || (b.a === id2 && b.b === id1));
+  }
+
+  // 由目前電子數與鍵結數推出:孤對、未配對、形式電荷、八隅體是否完成
+  function derived(a) {
+    const info = ELEMENTS[a.el];
+    const bondCount = bonds.reduce((s, b) => s + (b.a === a.id || b.b === a.id ? b.order : 0), 0);
+    const nonbonding = a.electrons - bondCount;
+    const availOrb = Math.max(info.orb - bondCount, 0);
+    const pairs = Math.max(0, nonbonding - availOrb);
+    const unpaired = nonbonding - 2 * pairs;
+    const targetE = info.orb * 2;
+    const shellE = bondCount * 2 + nonbonding;
+    const satisfied = shellE === targetE && unpaired === 0;
+    const fc = info.valence - nonbonding - bondCount;
+    return { bondCount, nonbonding, pairs, unpaired, satisfied, fc, targetE, shellE };
+  }
+
+  function bondAnglesOf(a) {
+    return bonds
+      .filter((b) => b.a === a.id || b.b === a.id)
+      .map((b) => {
+        const other = atomById(b.a === a.id ? b.b : b.a);
+        return (Math.atan2(-(other.y - a.y), other.x - a.x) * 180) / Math.PI;
+      });
+  }
+
+  // 電子群(孤對/未配對)避開鍵的方向、彼此分散排列
+  function chooseAngles(bondAngles, n) {
+    const candidates = [];
+    for (let d = 90; d < 450; d += 15) candidates.push(d % 360);
+    const chosen = [];
+    for (let i = 0; i < n; i++) {
+      let best = candidates[0];
+      let bestScore = -1;
+      candidates.forEach((c) => {
+        let score = 360;
+        bondAngles.forEach((b) => (score = Math.min(score, angDist(c, b))));
+        chosen.forEach((g) => (score = Math.min(score, angDist(c, g))));
+        if (score > bestScore) {
+          bestScore = score;
+          best = c;
+        }
+      });
+      chosen.push(best);
+    }
+    return chosen;
+  }
+
+  function drawElectrons(parent, cx, cy, radius, pairs, unpaired, bondAngles, dotR) {
+    const angles = chooseAngles(bondAngles, pairs + unpaired);
+    angles.forEach((ang, i) => {
+      if (i < pairs) {
+        const base = polar(cx, cy, radius, ang);
+        const t = toRad(ang + 90);
+        const dx = Math.cos(t) * dotR * 1.9;
+        const dy = -Math.sin(t) * dotR * 1.9;
+        [-1, 1].forEach((s) => {
+          parent.appendChild(el('circle', { cx: base.x + dx * s, cy: base.y + dy * s, r: dotR, fill: '#222' }));
+        });
+      } else {
+        const p = polar(cx, cy, radius, ang);
+        parent.appendChild(el('circle', { cx: p.x, cy: p.y, r: dotR, fill: '#222' }));
+      }
+    });
+  }
+
+  function setStatus(msg, cls) {
+    statusEl.textContent = msg;
+    statusEl.className = 'status-line' + (cls ? ' ' + cls : '');
+  }
 
   function toSvgPoint(clientX, clientY) {
     const pt = stage.createSVGPoint();
@@ -130,81 +131,258 @@
     pt.y = clientY;
     const ctm = stage.getScreenCTM();
     if (!ctm) return { x: 0, y: 0 };
-    const inv = ctm.inverse();
-    const p = pt.matrixTransform(inv);
-    return { x: p.x, y: p.y };
+    return pt.matrixTransform(ctm.inverse());
   }
 
-  function loadMolecule(key) {
-    currentDef = MOLECULES[key];
-    atomsState = {};
-    const count = currentDef.atoms.length - 1;
-    let idx = 0;
-    currentDef.atoms.forEach((a) => {
-      if (a.id === currentDef.centralId) {
-        atomsState[a.id] = { el: a.el, x: CENTER.x, y: CENTER.y, locked: true, def: a };
+  function addAtom(elKey) {
+    const info = ELEMENTS[elKey];
+    let x = STAGE_W / 2;
+    let y = STAGE_H / 2;
+    for (let t = 0; t < 40; t++) {
+      const tx = 110 + Math.random() * (STAGE_W - 220);
+      const ty = 90 + Math.random() * (STAGE_H - 180);
+      if (atoms.every((a) => Math.hypot(a.x - tx, a.y - ty) > 95)) {
+        x = tx;
+        y = ty;
+        break;
+      }
+    }
+    atoms.push({ id: nextId++, el: elKey, x, y, electrons: info.valence });
+    setStatus(`加入 ${info.name} ${elKey}(價電子 ${info.valence} 個),拖曳靠近其他原子就能成鍵。`);
+    render();
+  }
+
+  function formDist(a, b) {
+    return ELEMENTS[a.el].r + ELEMENTS[b.el].r + 34;
+  }
+  function breakDist(a, b) {
+    return ELEMENTS[a.el].r + ELEMENTS[b.el].r + 115;
+  }
+
+  function checkBreak(a) {
+    for (let i = bonds.length - 1; i >= 0; i--) {
+      const b = bonds[i];
+      if (b.a !== a.id && b.b !== a.id) continue;
+      const other = atomById(b.a === a.id ? b.b : b.a);
+      if (Math.hypot(a.x - other.x, a.y - other.y) > breakDist(a, other)) {
+        bonds.splice(i, 1);
+        setStatus(`${a.el}−${other.el} 的鍵斷開了,電子回到各自的原子上。`, 'warn');
+      }
+    }
+  }
+
+  function checkForm(a) {
+    let best = null;
+    let bestD = Infinity;
+    atoms.forEach((o) => {
+      if (o.id === a.id || bondBetween(a.id, o.id)) return;
+      const d = Math.hypot(a.x - o.x, a.y - o.y);
+      if (d < formDist(a, o) && d < bestD && derived(a).unpaired > 0 && derived(o).unpaired > 0) {
+        best = o;
+        bestD = d;
+      }
+    });
+    if (!best) return;
+    bonds.push({ a: a.id, b: best.id, order: 1 });
+    const len = ELEMENTS[a.el].r + ELEMENTS[best.el].r + 26;
+    const ang = Math.atan2(a.y - best.y, a.x - best.x);
+    a.x = best.x + Math.cos(ang) * len;
+    a.y = best.y + Math.sin(ang) * len;
+    setStatus(`${a.el}−${best.el} 形成單鍵!兩邊各出 1 個電子變成共用電子對。點一下鍵可試著升級成雙鍵/三鍵。`, 'success');
+  }
+
+  function cycleBond(b) {
+    const a1 = atomById(b.a);
+    const a2 = atomById(b.b);
+    if (b.order < 3 && derived(a1).unpaired > 0 && derived(a2).unpaired > 0) {
+      b.order++;
+      setStatus(`${a1.el}−${a2.el} 升級為${b.order === 2 ? '雙' : '三'}鍵,共用 ${b.order} 對電子。`, 'success');
+    } else if (b.order > 1) {
+      b.order = 1;
+      setStatus(`${a1.el}−${a2.el} 還原為單鍵。`);
+    } else {
+      setStatus('無法升級:兩端原子都必須還有未配對電子才能再共用一對。');
+    }
+    render();
+  }
+
+  function changeElectron(delta) {
+    const a = atomById(selectedId);
+    if (!a) return;
+    const info = ELEMENTS[a.el];
+    const d = derived(a);
+    if (delta > 0) {
+      if (d.nonbonding + 1 > 2 * Math.max(info.orb - d.bondCount, 0)) {
+        setStatus('軌域已滿,無法再加入電子。', 'warn');
+        return;
+      }
+      a.electrons++;
+      setStatus(`${a.el} 得到 1 個電子(變成陰離子方向),注意形式電荷的變化。`);
+    } else {
+      if (d.nonbonding <= 0) {
+        setStatus('沒有非鍵結電子可移除(鍵上的電子要先斷鍵才能拿走)。', 'warn');
+        return;
+      }
+      a.electrons--;
+      setStatus(`${a.el} 失去 1 個電子(變成陽離子方向),注意形式電荷的變化。`);
+    }
+    render();
+  }
+
+  function deleteSelected() {
+    if (selectedId == null) return;
+    bonds = bonds.filter((b) => b.a !== selectedId && b.b !== selectedId);
+    atoms = atoms.filter((a) => a.id !== selectedId);
+    selectedId = null;
+    setStatus('已刪除原子。');
+    render();
+  }
+
+  function clearAll() {
+    atoms = [];
+    bonds = [];
+    selectedId = null;
+    setStatus('畫布已清空,從左側加入原子開始新的組合。');
+    render();
+  }
+
+  function components() {
+    const seen = new Set();
+    const comps = [];
+    atoms.forEach((a) => {
+      if (seen.has(a.id)) return;
+      seen.add(a.id);
+      const stack = [a.id];
+      const ids = [];
+      while (stack.length) {
+        const id = stack.pop();
+        ids.push(id);
+        bonds.forEach((b) => {
+          if (b.a === id && !seen.has(b.b)) {
+            seen.add(b.b);
+            stack.push(b.b);
+          }
+          if (b.b === id && !seen.has(b.a)) {
+            seen.add(b.a);
+            stack.push(b.a);
+          }
+        });
+      }
+      comps.push(ids.map(atomById));
+    });
+    return comps;
+  }
+
+  function countsOf(comp) {
+    const counts = {};
+    comp.forEach((a) => (counts[a.el] = (counts[a.el] || 0) + 1));
+    return counts;
+  }
+  function formulaKey(counts) {
+    return ['C', 'H', 'N', 'O']
+      .filter((e) => counts[e])
+      .map((e) => e + counts[e])
+      .join('');
+  }
+  function sub(n) {
+    return String(n)
+      .split('')
+      .map((c) => SUBSCRIPT[c])
+      .join('');
+  }
+  function formulaDisplay(counts) {
+    if (counts.O === 1 && counts.H === 1 && !counts.C && !counts.N) return 'OH';
+    return ['C', 'N', 'H', 'O']
+      .filter((e) => counts[e])
+      .map((e) => e + (counts[e] > 1 ? sub(counts[e]) : ''))
+      .join('');
+  }
+
+  function updatePanels() {
+    // 目標分子勾選
+    const comps = components();
+    comps.forEach((comp) => {
+      if (comp.length < 2) return;
+      if (!comp.every((a) => derived(a).satisfied)) return;
+      const net = comp.reduce((s, a) => s + derived(a).fc, 0);
+      if (net !== 0) return;
+      const key = formulaKey(countsOf(comp));
+      if (TARGETS.some((t) => t.key === key)) doneTargets.add(key);
+    });
+    chipsEl.innerHTML = '';
+    TARGETS.forEach((t) => {
+      const chip = document.createElement('span');
+      chip.className = 'chip' + (doneTargets.has(t.key) ? ' done' : '');
+      chip.textContent = (doneTargets.has(t.key) ? '✓ ' : '') + t.label;
+      chipsEl.appendChild(chip);
+    });
+
+    // 畫布上的分子清單
+    const lines = [];
+    const singles = {};
+    comps.forEach((comp) => {
+      if (comp.length === 1) {
+        singles[comp[0].el] = (singles[comp[0].el] || 0) + 1;
+        return;
+      }
+      const counts = countsOf(comp);
+      const key = formulaKey(counts);
+      const target = TARGETS.find((t) => t.key === key);
+      const net = comp.reduce((s, a) => s + derived(a).fc, 0);
+      const allSat = comp.every((a) => derived(a).satisfied);
+      let name = target ? target.label : formulaDisplay(counts);
+      if (net !== 0) name += net > 0 ? `(離子,電荷 +${net})` : `(離子,電荷 −${-net})`;
+      if (allSat) {
+        lines.push(`✓ ${name} — 每個原子都達成八隅體(H 為二隅體),形式電荷合計 ${net > 0 ? '+' + net : net}。`);
       } else {
-        const baseAngle = idx * (360 / Math.max(count, 1)) + (Math.random() * 30 - 15);
-        const radius = 250 + Math.random() * 110;
-        const p = polar(CENTER.x, CENTER.y, radius, baseAngle);
-        atomsState[a.id] = { el: a.el, x: p.x, y: p.y, locked: false, def: a };
-        idx++;
+        const need = {};
+        comp.forEach((a) => {
+          const u = derived(a).unpaired;
+          if (u > 0) need[a.el] = (need[a.el] || 0) + u;
+        });
+        const needText = Object.entries(need)
+          .map(([e, n]) => `${e} 還有 ${n} 個未配對電子`)
+          .join('、');
+        lines.push(`◌ ${name} — 尚未完成:${needText || '電子排列不完整'}。`);
       }
     });
-    bondsState = currentDef.bonds.map((b) => ({ ...b, formed: false }));
-    startLoop();
-    updateStatus();
-  }
+    const singleText = Object.entries(singles)
+      .map(([e, n]) => `${e}×${n}`)
+      .join('、');
+    if (singleText) lines.push(`未鍵結原子:${singleText}`);
+    readoutEl.innerHTML = lines.length
+      ? lines.map((l) => `<div>${l}</div>`).join('')
+      : '<div>畫布是空的。</div>';
 
-  function checkBonds() {
-    let changed = false;
-    bondsState.forEach((b) => {
-      if (b.formed) return;
-      const central = atomsState[b.a];
-      const term = atomsState[b.b];
-      if (dist(central, term) < SNAP_DIST) {
-        b.formed = true;
-        changed = true;
-        const target = polar(CENTER.x, CENTER.y, R_BOND, term.def.angle);
-        term.tween = { fromX: term.x, fromY: term.y, toX: target.x, toY: target.y, start: performance.now() };
-        term.locked = true;
-      }
-    });
-    if (changed) updateStatus();
-  }
-
-  function updateTweens(now) {
-    Object.values(atomsState).forEach((a) => {
-      if (!a.tween) return;
-      const t = Math.min(1, (now - a.tween.start) / TWEEN_MS);
-      const ease = t * (2 - t);
-      a.x = a.tween.fromX + (a.tween.toX - a.tween.fromX) * ease;
-      a.y = a.tween.fromY + (a.tween.toY - a.tween.fromY) * ease;
-      if (t >= 1) delete a.tween;
-    });
-  }
-
-  function bondSlotAngleFor(atomId) {
-    const a = atomsState[atomId];
-    if (atomId === currentDef.centralId) return null;
-    return (a.def.angle + 180) % 360;
-  }
-
-  function drawDotPair(group, center, angleDeg, radiusOffset, tangentSpread) {
-    const base = polar(center.x, center.y, radiusOffset, angleDeg);
-    const tangentRad = ((angleDeg + 90) * Math.PI) / 180;
-    const dx = Math.cos(tangentRad) * tangentSpread;
-    const dy = -Math.sin(tangentRad) * tangentSpread;
-    [-1, 1].forEach((s) => {
-      group.appendChild(
-        el('circle', { cx: base.x + dx * s, cy: base.y + dy * s, r: 3.4, fill: '#222' })
-      );
-    });
-  }
-
-  function drawSingleDot(group, center, angleDeg, radiusOffset) {
-    const p = polar(center.x, center.y, radiusOffset, angleDeg);
-    group.appendChild(el('circle', { cx: p.x, cy: p.y, r: 3.4, fill: '#222' }));
+    // 選取原子面板
+    const a = atomById(selectedId);
+    if (!a) {
+      selPanelEl.innerHTML =
+        '<h4>選取的原子</h4><p class="tiny">點一下畫布上的原子,這裡會顯示它的形式電荷計算,並可增減電子做出離子(例如 H₃O⁺、OH⁻)。</p>';
+      return;
+    }
+    const info = ELEMENTS[a.el];
+    const d = derived(a);
+    selPanelEl.innerHTML = `
+      <h4>選取的原子:${info.name} ${a.el}</h4>
+      <div class="fc-formula">
+        形式電荷 FC = V − N − B<br>
+        = ${info.valence} − ${d.nonbonding} − ${d.bondCount} = <b>${d.fc > 0 ? '+' + d.fc : d.fc}</b>
+      </div>
+      <p class="tiny">
+        V(原始價電子)= ${info.valence}<br>
+        B(鍵結數)= ${d.bondCount},共用 ${d.bondCount} 對電子<br>
+        N(非鍵結電子)= ${d.nonbonding}(孤對 ${d.pairs} 對+未配對 ${d.unpaired} 個)<br>
+        ${d.targetE === 2 ? '二隅體' : '八隅體'}:${d.shellE} / ${d.targetE} ${d.satisfied ? '✓ 完成' : ''}
+      </p>
+      <div class="sel-actions">
+        <button id="btn-add-e">＋1 e⁻</button>
+        <button id="btn-sub-e">−1 e⁻</button>
+        <button id="btn-del-atom">刪除原子</button>
+      </div>`;
+    document.getElementById('btn-add-e').addEventListener('click', () => changeElectron(1));
+    document.getElementById('btn-sub-e').addEventListener('click', () => changeElectron(-1));
+    document.getElementById('btn-del-atom').addEventListener('click', deleteSelected);
   }
 
   function render() {
@@ -214,163 +392,202 @@
     stage.appendChild(bondLayer);
     stage.appendChild(atomLayer);
 
-    if (currentDef) {
-      const central = atomsState[currentDef.centralId];
-      const dashRing = el('circle', {
-        cx: central.x,
-        cy: central.y,
-        r: R_BOND,
-        fill: 'none',
-        stroke: '#c9cfe6',
-        'stroke-width': 1.5,
-        'stroke-dasharray': '5,6',
-      });
-      bondLayer.appendChild(dashRing);
-
-      bondsState.forEach((b) => {
-        if (!b.formed) return;
-        const a1 = atomsState[b.a];
-        const a2 = atomsState[b.b];
+    bonds.forEach((b) => {
+      const a1 = atomById(b.a);
+      const a2 = atomById(b.b);
+      bondLayer.appendChild(
+        el('line', { x1: a1.x, y1: a1.y, x2: a2.x, y2: a2.y, stroke: '#8a8f9c', 'stroke-width': 2 })
+      );
+      const mid = { x: (a1.x + a2.x) / 2, y: (a1.y + a2.y) / 2 };
+      const bondAngle = (Math.atan2(-(a2.y - a1.y), a2.x - a1.x) * 180) / Math.PI;
+      for (let i = 0; i < b.order; i++) {
+        const off = (i - (b.order - 1) / 2) * 15;
+        const c = polar(mid.x, mid.y, off, bondAngle + 90);
         bondLayer.appendChild(
-          el('line', { x1: a1.x, y1: a1.y, x2: a2.x, y2: a2.y, stroke: '#666', 'stroke-width': 2 })
+          el('ellipse', {
+            cx: c.x,
+            cy: c.y,
+            rx: 11,
+            ry: 6.5,
+            fill: '#ffe999',
+            'fill-opacity': 0.9,
+            transform: `rotate(${-bondAngle} ${c.x} ${c.y})`,
+          })
         );
-        const mid = { x: (a1.x + a2.x) / 2, y: (a1.y + a2.y) / 2 };
-        const bondAngle = (Math.atan2(-(a2.y - a1.y), a2.x - a1.x) * 180) / Math.PI;
-        const perpAngle = bondAngle + 90;
-        for (let i = 0; i < b.order; i++) {
-          const offset = (i - (b.order - 1) / 2) * 14;
-          const shifted = polar(mid.x, mid.y, offset, perpAngle);
-          drawDotPair(bondLayer, shifted, bondAngle, 0, 5);
-        }
+        [-1, 1].forEach((s) => {
+          const p = polar(c.x, c.y, 4.5 * s, bondAngle);
+          bondLayer.appendChild(el('circle', { cx: p.x, cy: p.y, r: 3.1, fill: '#222' }));
+        });
+      }
+      const hit = el('line', {
+        x1: a1.x,
+        y1: a1.y,
+        x2: a2.x,
+        y2: a2.y,
+        stroke: 'transparent',
+        'stroke-width': 24,
+        style: 'cursor:pointer',
+        class: 'bond-hit',
       });
+      hit.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        cycleBond(b);
+      });
+      bondLayer.appendChild(hit);
+    });
 
-      Object.entries(atomsState).forEach(([id, a]) => {
-        const info = ELEMENTS[a.el];
-        const g = el('g', { class: 'atom-group' + (a.locked ? ' locked' : '') });
-        g.appendChild(el('circle', { cx: a.x, cy: a.y, r: info.r, fill: info.color, stroke: '#555', 'stroke-width': 1.5 }));
-        const label = el('text', {
-          x: a.x,
-          y: a.y,
+    atoms.forEach((a) => {
+      const info = ELEMENTS[a.el];
+      const d = derived(a);
+      const g = el('g', { class: 'atom-group', 'data-id': a.id });
+      if (a.id === selectedId) {
+        g.appendChild(
+          el('circle', {
+            cx: a.x,
+            cy: a.y,
+            r: info.r + 9,
+            fill: 'none',
+            stroke: '#3b5bdb',
+            'stroke-width': 2,
+            'stroke-dasharray': '4,4',
+          })
+        );
+      }
+      g.appendChild(
+        el('circle', {
+          cx: a.x,
+          cy: a.y,
+          r: info.r,
+          fill: info.color,
+          stroke: d.satisfied ? '#2f9e44' : '#666',
+          'stroke-width': d.satisfied ? 3 : 1.5,
+        })
+      );
+      const label = el('text', {
+        x: a.x,
+        y: a.y,
+        'text-anchor': 'middle',
+        'dominant-baseline': 'central',
+        'font-size': info.r * 0.8,
+        'font-weight': 700,
+        fill: '#222',
+      });
+      label.textContent = a.el;
+      g.appendChild(label);
+
+      drawElectrons(g, a.x, a.y, info.r + 11, d.pairs, d.unpaired, bondAnglesOf(a), 3.1);
+
+      if (d.fc !== 0) {
+        const bp = polar(a.x, a.y, info.r + 4, 45);
+        g.appendChild(el('circle', { cx: bp.x, cy: bp.y, r: 9, fill: d.fc > 0 ? '#e03131' : '#1971c2' }));
+        const t = el('text', {
+          x: bp.x,
+          y: bp.y,
           'text-anchor': 'middle',
           'dominant-baseline': 'central',
-          'font-size': info.r * 0.85,
-          'font-weight': '700',
-          fill: '#222',
+          'font-size': 10,
+          'font-weight': 700,
+          fill: '#fff',
         });
-        label.textContent = a.el;
-        g.appendChild(label);
+        t.textContent = (d.fc > 0 ? '+' : '') + d.fc;
+        g.appendChild(t);
+      }
 
-        (a.def.loneAngles || []).forEach((angle) => {
-          drawDotPair(g, a, angle, info.r + 12, 6);
-        });
-
-        if (id !== currentDef.centralId) {
-          const bond = bondsState.find((b) => b.b === id);
-          if (bond && !bond.formed) {
-            const slotAngle = bondSlotAngleFor(id);
-            for (let i = 0; i < bond.order; i++) {
-              drawSingleDot(g, a, slotAngle + (i - (bond.order - 1) / 2) * 18, info.r + 10);
-            }
-          }
-        } else {
-          bondsState.forEach((bond) => {
-            if (bond.formed) return;
-            const term = atomsState[bond.b];
-            for (let i = 0; i < bond.order; i++) {
-              drawSingleDot(g, a, term.def.angle + (i - (bond.order - 1) / 2) * 18, info.r + 10);
-            }
-          });
-        }
-
-        if (!a.locked) {
-          g.addEventListener('pointerdown', (e) => {
-            dragging = id;
-            e.target.setPointerCapture && e.target.setPointerCapture(e.pointerId);
-            e.preventDefault();
-          });
-        }
-        atomLayer.appendChild(g);
+      g.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        const p = toSvgPoint(e.clientX, e.clientY);
+        drag = { id: a.id, sx: p.x, sy: p.y, moved: false };
+        try {
+          stage.setPointerCapture(e.pointerId);
+        } catch (_) {}
+        e.preventDefault();
       });
-    }
+      atomLayer.appendChild(g);
+    });
+
+    updatePanels();
   }
 
-  function loop(now) {
-    updateTweens(now);
-    checkBonds();
-    render();
-    rafId = requestAnimationFrame(loop);
-  }
-
-  function startLoop() {
-    if (rafId) cancelAnimationFrame(rafId);
-    rafId = requestAnimationFrame(loop);
-  }
-
-  function updateStatus() {
-    if (!currentDef) {
-      statusEl.textContent = '請選擇一個分子開始。';
-      statusEl.className = 'status-line';
-      return;
-    }
-    const total = bondsState.length;
-    const formed = bondsState.filter((b) => b.formed).length;
-    if (formed < total) {
-      statusEl.textContent = `${currentDef.label}：已形成 ${formed} / ${total} 個鍵，把剩下的原子拖近中心原子試試看。`;
-      statusEl.className = 'status-line';
-    } else {
-      const loneSummary = Object.values(atomsState)
-        .filter((a) => (a.def.loneAngles || []).length > 0)
-        .map((a) => `${a.el} 上 ${a.def.loneAngles.length} 對孤對電子`)
-        .join('、');
-      const bondSummary = {};
-      bondsState.forEach((b) => {
-        bondSummary[b.order] = (bondSummary[b.order] || 0) + 1;
+  function buildPalette() {
+    const wrap = document.getElementById('palette-buttons');
+    Object.entries(ELEMENTS).forEach(([key, info]) => {
+      const btn = document.createElement('button');
+      btn.className = 'palette-btn';
+      btn.dataset.el = key;
+      btn.title = `${info.name} ${key}:價電子 ${info.valence} 個`;
+      const rr = key === 'H' ? 13 : 17;
+      const svg = el('svg', { viewBox: '-32 -32 64 64' });
+      svg.appendChild(el('circle', { cx: 0, cy: 0, r: rr, fill: info.color, stroke: '#666', 'stroke-width': 1.2 }));
+      const t = el('text', {
+        x: 0,
+        y: 0,
+        'text-anchor': 'middle',
+        'dominant-baseline': 'central',
+        'font-size': rr * 0.95,
+        'font-weight': 700,
+        fill: '#222',
       });
-      const orderNames = { 1: '單鍵', 2: '雙鍵', 3: '三鍵' };
-      const bondText = Object.entries(bondSummary)
-        .map(([order, n]) => `${n} 個${orderNames[order] || order + '鍵'}`)
-        .join('、');
-      statusEl.textContent = `${currentDef.label} 形成完成！共價鍵：${bondText}。${loneSummary ? '孤對電子：' + loneSummary + '。' : ''}`;
-      statusEl.className = 'status-line success';
-    }
+      t.textContent = key;
+      svg.appendChild(t);
+      const pairs = Math.max(0, info.valence - info.orb);
+      const unpaired = info.valence - 2 * pairs;
+      drawElectrons(svg, 0, 0, rr + 7, pairs, unpaired, [], 2.4);
+      btn.appendChild(svg);
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'pname';
+      nameDiv.textContent = `${info.name}·價電子${info.valence}`;
+      btn.appendChild(nameDiv);
+      btn.addEventListener('click', () => addAtom(key));
+      wrap.appendChild(btn);
+    });
   }
 
   function init() {
     stage = document.getElementById('lewis-stage');
     statusEl = document.getElementById('lewis-status');
-    moleculeButtonsEl = document.getElementById('molecule-buttons');
-    resetBtn = document.getElementById('lewis-reset');
+    readoutEl = document.getElementById('component-readout');
+    chipsEl = document.getElementById('target-chips');
+    selPanelEl = document.getElementById('selected-panel');
 
-    Object.entries(MOLECULES).forEach(([key, def]) => {
-      const btn = document.createElement('button');
-      btn.className = 'mol-btn';
-      btn.textContent = def.label;
-      btn.dataset.key = key;
-      btn.addEventListener('click', () => {
-        moleculeButtonsEl.querySelectorAll('.mol-btn').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        loadMolecule(key);
-      });
-      moleculeButtonsEl.appendChild(btn);
+    buildPalette();
+    document.getElementById('lewis-clear').addEventListener('click', clearAll);
+
+    stage.addEventListener('pointerdown', (e) => {
+      if (e.target === stage) {
+        selectedId = null;
+        render();
+      }
     });
-
-    resetBtn.addEventListener('click', () => {
-      const activeKey = moleculeButtonsEl.querySelector('.mol-btn.active');
-      if (activeKey) loadMolecule(activeKey.dataset.key);
-    });
-
     stage.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
+      if (!drag) return;
+      const a = atomById(drag.id);
+      if (!a) return;
       const p = toSvgPoint(e.clientX, e.clientY);
-      atomsState[dragging].x = p.x;
-      atomsState[dragging].y = p.y;
+      if (!drag.moved && Math.hypot(p.x - drag.sx, p.y - drag.sy) < 6) return;
+      drag.moved = true;
+      a.x = Math.max(30, Math.min(STAGE_W - 30, p.x));
+      a.y = Math.max(30, Math.min(STAGE_H - 30, p.y));
+      checkBreak(a);
+      checkForm(a);
+      render();
     });
     const endDrag = () => {
-      dragging = null;
+      if (drag && !drag.moved) {
+        selectedId = selectedId === drag.id ? null : drag.id;
+        render();
+      }
+      drag = null;
     };
     stage.addEventListener('pointerup', endDrag);
     stage.addEventListener('pointercancel', endDrag);
-    stage.addEventListener('pointerleave', endDrag);
+
+    // 測試用鉤子(不影響使用)
+    window.__lewis = {
+      atoms: () => atoms.map((a) => ({ ...a, ...derived(a) })),
+      bonds: () => bonds.map((b) => ({ ...b })),
+    };
+
+    render();
   }
 
   document.addEventListener('DOMContentLoaded', init);

@@ -21,20 +21,61 @@
 <main>
   <section id="tab-lewis" class="tab-panel active">
     <p class="panel-intro">
-      選擇一個分子，把散落的原子拖曳靠近，觀察價電子如何配對形成共價鍵、
-      以及孤對電子如何分布，驗證路易斯結構與化合價。
+      從左側「原子盒」點一下原子加入畫布。每個原子都畫出它的價電子：成對的是<b>孤對電子</b>、單獨的是<b>未配對電子</b>（可以成鍵）。
+      拖曳兩個原子靠近，未配對電子會互相配對成<b>共用電子對</b>（黃底）形成共價鍵；點一下鍵可升級為雙鍵／三鍵（兩端都要還有未配對電子）。
+      點選原子可查看<b>形式電荷</b>的計算，並可增減電子做出離子。試著完成上方的目標分子！
     </p>
 
-    <div class="lewis-controls">
-      <div class="molecule-buttons" id="molecule-buttons"></div>
-      <button id="lewis-reset" class="btn-secondary">重置</button>
-    </div>
+    <div class="lewis-layout">
+      <aside class="palette">
+        <div class="palette-title">原子盒</div>
+        <div id="palette-buttons"></div>
+        <button id="lewis-clear" class="btn-secondary">清空畫布</button>
+      </aside>
 
-    <div class="lewis-stage-wrap">
-      <svg id="lewis-stage" viewBox="0 0 900 520" preserveAspectRatio="xMidYMid meet"></svg>
-    </div>
+      <div class="lewis-center">
+        <div class="target-chips" id="target-chips"></div>
+        <svg id="lewis-stage" viewBox="0 0 760 520" preserveAspectRatio="xMidYMid meet"></svg>
+        <p class="legend">
+          單獨黑點＝未配對電子（可成鍵）　黑點成對＝孤對電子　黃底電子對＝共用電子對（共價鍵）
+          綠色外框＝八隅體／二隅體完成　紅＋／藍−徽章＝形式電荷
+        </p>
+        <p id="lewis-status" class="status-line">先從左側加入原子吧！</p>
+        <div id="component-readout" class="readout"></div>
+      </div>
 
-    <p id="lewis-status" class="status-line">請選擇一個分子開始。</p>
+      <aside class="info-panel">
+        <div class="info-card" id="selected-panel"></div>
+        <div class="info-card">
+          <h4>價電子 與 可成鍵數 的關係</h4>
+          <table class="ref">
+            <thead><tr><th>原子</th><th>價電子 V</th><th>未配對<br>(=可成鍵數)</th><th>孤對</th></tr></thead>
+            <tbody>
+              <tr><td>H</td><td>1</td><td>1</td><td>0</td></tr>
+              <tr><td>C</td><td>4</td><td>4</td><td>0</td></tr>
+              <tr><td>N</td><td>5</td><td>3</td><td>1</td></tr>
+              <tr><td>O</td><td>6</td><td>2</td><td>2</td></tr>
+            </tbody>
+          </table>
+          <p class="tiny">
+            可成鍵數 ＝ 未配對電子數 ＝ 8 − 價電子數（H 為 2 − 1 ＝ 1）。
+            這就是各元素的「化合價」：H 接 1 個鍵、O 接 2 個、N 接 3 個、C 接 4 個 ——
+            所以水是 H₂O、氨是 NH₃、甲烷是 CH₄。
+          </p>
+        </div>
+        <div class="info-card">
+          <h4>形式電荷</h4>
+          <p class="tiny">
+            FC ＝ V − N − B<br>
+            V：原子本來的價電子數<br>
+            N：非鍵結電子數（孤對＋未配對）<br>
+            B：鍵結數（共用電子對的數目）<br>
+            中性分子裡每個原子的 FC 通常是 0。
+            試試看：選取原子按「−1 e⁻」再接氫，做出 H₃O⁺；或按「＋1 e⁻」做出 OH⁻。
+          </p>
+        </div>
+      </aside>
+    </div>
   </section>
 
   <section id="tab-lcao" class="tab-panel">
