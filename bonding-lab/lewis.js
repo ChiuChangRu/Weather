@@ -31,6 +31,8 @@
   let selectedId = null;
   let drag = null;
   let trashHover = false;
+  let cloudOn = false;
+  let optimizing = false;
   const TRASH = { x: STAGE_W - 54, y: STAGE_H - 54, r: 32 };
   const doneTargets = new Set();
 
@@ -289,6 +291,217 @@
     render();
   }
 
+  // ---- 簡易能量最小化(鍵長/鍵角最佳化) ----
+  // 平衡鍵長:鍵級越高鍵越短
+  function r0Of(b) {
+    const a1 = atomById(b.a);
+    const a2 = atomById(b.b);
+    return ELEMENTS[a1.el].r + ELEMENTS[a2.el].r + 30 - 7 * (b.order - 1);
+  }
+
+  function neighborsOf(c) {
+    const list = [];
+    bonds.forEach((b) => {
+      if (b.a === c.id) list.push(atomById(b.b));
+      else if (b.b === c.id) list.push(atomById(b.a));
+    });
+    return list;
+  }
+
+  // 一次鬆弛迭代;apply=false 時只計算能量(任意單位)
+  function relaxPass(apply, stepScale) {
+    let E = 0;
+    // 鍵長彈簧:偏離平衡距離就有能量
+    bonds.forEach((b) => {
+      const a1 = atomById(b.a);
+      const a2 = atomById(b.b);
+      const dx = a2.x - a1.x;
+      const dy = a2.y - a1.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const err = d - r0Of(b);
+      E += 0.01 * err * err;
+      if (apply) {
+        const s = (err * 0.25 * stepScale) / d;
+        a1.x += dx * s;
+        a1.y += dy * s;
+        a2.x -= dx * s;
+        a2.y -= dy * s;
+      }
+    });
+    // 鍵角:電子群(鍵+孤對)互相排斥,平均分開(簡化 VSEPR)
+    atoms.forEach((c) => {
+      const nb = neighborsOf(c);
+      if (nb.length < 2) return;
+      const rots = new Map();
+      const add = (at, dt) => rots.set(at.id, (rots.get(at.id) || 0) + dt);
+      if (nb.length === 2) {
+        const lp = derived(c).pairs;
+        const target = lp > 0 ? 360 / (2 + lp) : 180;
+        const ang1 = Math.atan2(nb[0].y - c.y, nb[0].x - c.x);
+        const ang2 = Math.atan2(nb[1].y - c.y, nb[1].x - c.x);
+        let diff = ((ang2 - ang1) * 180) / Math.PI;
+        while (diff < 0) diff += 360;
+        const gap = diff > 180 ? 360 - diff : diff;
+        const err = target - gap;
+        E += 0.004 * err * err;
+        const dir = diff > 180 ? -1 : 1;
+        const dt = ((err * Math.PI) / 180) * 0.12 * stepScale;
+        add(nb[0], -dir * dt);
+        add(nb[1], dir * dt);
+      } else {
+        const items = nb
+          .map((n) => ({ n, th: Math.atan2(n.y - c.y, n.x - c.x) }))
+          .sort((p, q) => p.th - q.th);
+        const target = (Math.PI * 2) / items.length;
+        for (let i = 0; i < items.length; i++) {
+          const cur = items[i];
+          const nxt = items[(i + 1) % items.length];
+          let gap = nxt.th - cur.th;
+          if (gap <= 0) gap += Math.PI * 2;
+          const errDeg = ((target - gap) * 180) / Math.PI;
+          E += 0.004 * errDeg * errDeg;
+          const dt = (target - gap) * 0.12 * stepScale;
+          add(cur.n, -dt / 2);
+          add(nxt.n, dt / 2);
+        }
+      }
+      if (apply) {
+        rots.forEach((dt, id) => {
+          const n = atomById(id);
+          const dx = n.x - c.x;
+          const dy = n.y - c.y;
+          const cos = Math.cos(dt);
+          const sin = Math.sin(dt);
+          n.x = c.x + dx * cos - dy * sin;
+          n.y = c.y + dx * sin + dy * cos;
+        });
+      }
+    });
+    // 未鍵結原子太近時互相排斥
+    for (let i = 0; i < atoms.length; i++) {
+      for (let j = i + 1; j < atoms.length; j++) {
+        const a1 = atoms[i];
+        const a2 = atoms[j];
+        if (bondBetween(a1.id, a2.id)) continue;
+        const minD = ELEMENTS[a1.el].r + ELEMENTS[a2.el].r + 16;
+        const dx = a2.x - a1.x;
+        const dy = a2.y - a1.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if (d < minD) {
+          E += 0.01 * (minD - d) * (minD - d);
+          if (apply) {
+            const s = ((minD - d) * 0.2 * stepScale) / d;
+            a1.x -= dx * s;
+            a1.y -= dy * s;
+            a2.x += dx * s;
+            a2.y += dy * s;
+          }
+        }
+      }
+    }
+    if (apply) {
+      atoms.forEach((a) => {
+        a.x = Math.max(30, Math.min(STAGE_W - 30, a.x));
+        a.y = Math.max(30, Math.min(STAGE_H - 30, a.y));
+      });
+    }
+    return E;
+  }
+
+  function runOptimize() {
+    if (optimizing) return;
+    if (bonds.length === 0) {
+      setStatus('先接出至少一個鍵,再進行鍵長最佳化!', 'warn');
+      return;
+    }
+    optimizing = true;
+    const btn = document.getElementById('btn-optimize');
+    btn.disabled = true;
+    const E0 = relaxPass(false, 0);
+    const t0 = performance.now();
+    const frame = () => {
+      for (let i = 0; i < 6; i++) relaxPass(true, 1);
+      render();
+      const E = relaxPass(false, 0);
+      if (performance.now() - t0 < 1500) {
+        setStatus(`簡易能量最小化中… E = ${E.toFixed(2)}(任意單位,持續下降)`);
+        requestAnimationFrame(frame);
+      } else {
+        optimizing = false;
+        btn.disabled = false;
+        setStatus(
+          `最佳化完成!E:${E0.toFixed(2)} → ${E.toFixed(2)}。鍵長已落在能量最低的平衡距離(鍵級越高鍵越短),鍵角由電子對互斥(VSEPR)決定。真正的量子化學計算(如 Hartree–Fock)是解電子的薛丁格方程式,這裡是它的簡化示意。`,
+          'success'
+        );
+      }
+    };
+    requestAnimationFrame(frame);
+  }
+
+  // ---- 價電子雲(90% 機率邊界,點狀網狀分布) ----
+  function mulberry32(seed) {
+    return function () {
+      seed |= 0;
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function drawCloud(layer) {
+    const DOT = { fill: '#5c7cfa', 'fill-opacity': 0.3 };
+    atoms.forEach((a) => {
+      const info = ELEMENTS[a.el];
+      const d = derived(a);
+      const rng = mulberry32(a.id * 7919 + 13);
+      const shellR = info.r + 11;
+      const r90 = info.r + 24;
+      layer.appendChild(
+        el('circle', {
+          cx: a.x,
+          cy: a.y,
+          r: r90,
+          fill: 'none',
+          stroke: '#748ffc',
+          'stroke-width': 1,
+          'stroke-dasharray': '3,5',
+          'stroke-opacity': 0.55,
+        })
+      );
+      const nDots = 26 + d.nonbonding * 16;
+      for (let i = 0; i < nDots; i++) {
+        const ang = rng() * Math.PI * 2;
+        const rr = shellR + (rng() + rng() + rng() - 1.5) * 9;
+        if (rr > r90 || rr < info.r * 0.55) continue;
+        layer.appendChild(
+          el('circle', { cx: a.x + rr * Math.cos(ang), cy: a.y + rr * Math.sin(ang), r: 1.1, ...DOT })
+        );
+      }
+    });
+    bonds.forEach((b) => {
+      const a1 = atomById(b.a);
+      const a2 = atomById(b.b);
+      const rng = mulberry32((b.a * 31 + b.b) * 2711 + 7);
+      const dx = a2.x - a1.x;
+      const dy = a2.y - a1.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len;
+      const uy = dy / len;
+      const px = -uy;
+      const py = ux;
+      const spread = 6 + 3 * b.order;
+      const nDots = 40 * b.order;
+      for (let i = 0; i < nDots; i++) {
+        const t = (rng() - 0.5) * 0.6;
+        const w = (rng() + rng() + rng() - 1.5) * spread;
+        const cx = (a1.x + a2.x) / 2 + t * len * ux + w * px;
+        const cy = (a1.y + a2.y) / 2 + t * len * uy + w * py;
+        layer.appendChild(el('circle', { cx, cy, r: 1.1, fill: '#5c7cfa', 'fill-opacity': 0.3 }));
+      }
+    });
+  }
+
   function components() {
     const seen = new Set();
     const comps = [];
@@ -459,6 +672,7 @@
     stage.appendChild(atomLayer);
 
     drawTrash(bondLayer);
+    if (cloudOn) drawCloud(bondLayer);
 
     bonds.forEach((b) => {
       const a1 = atomById(b.a);
@@ -619,6 +833,18 @@
 
     buildPalette();
     document.getElementById('lewis-clear').addEventListener('click', clearAll);
+    document.getElementById('btn-optimize').addEventListener('click', runOptimize);
+    const cloudBtn = document.getElementById('btn-cloud');
+    cloudBtn.addEventListener('click', () => {
+      cloudOn = !cloudOn;
+      cloudBtn.classList.toggle('active', cloudOn);
+      setStatus(
+        cloudOn
+          ? '顯示價電子雲:點狀(網狀)分布表示電子出現的機率,虛線圈約包住 90% 的機率密度;鍵上的雲比較密,就是共用電子的地方。'
+          : '已隱藏電子雲。'
+      );
+      render();
+    });
 
     stage.addEventListener('pointerdown', (e) => {
       if (e.target === stage) {
