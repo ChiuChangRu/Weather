@@ -242,6 +242,198 @@
     renderPotentialCurve();
   }
 
+  // ---- 真實 Hartree–Fock:H₂ / STO-3G 基底 ----
+  // 即時計算高斯基底的重疊/動能/核吸引/電子互斥積分,組出 RHF 能量
+  const HF = (() => {
+    const ALPHA = [3.42525091, 0.62391373, 0.1688554];
+    const DCOEF = [0.15432897, 0.53532814, 0.44463454].map(
+      (d, i) => d * Math.pow((2 * ALPHA[i]) / Math.PI, 0.75)
+    );
+
+    function erf(x) {
+      const sign = x < 0 ? -1 : 1;
+      x = Math.abs(x);
+      const t = 1 / (1 + 0.3275911 * x);
+      const y =
+        1 -
+        ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) *
+          t *
+          Math.exp(-x * x);
+      return sign * y;
+    }
+    function F0(t) {
+      if (t < 1e-8) return 1 - t / 3;
+      return 0.5 * Math.sqrt(Math.PI / t) * erf(Math.sqrt(t));
+    }
+    function sPrim(a, b, rab2) {
+      const p = a + b;
+      return Math.pow(Math.PI / p, 1.5) * Math.exp((-a * b * rab2) / p);
+    }
+    function tPrim(a, b, rab2) {
+      const p = a + b;
+      const mu = (a * b) / p;
+      return mu * (3 - 2 * mu * rab2) * Math.pow(Math.PI / p, 1.5) * Math.exp(-mu * rab2);
+    }
+    function vPrim(a, b, xa, xb, xc) {
+      const p = a + b;
+      const xp = (a * xa + b * xb) / p;
+      return ((-2 * Math.PI) / p) * Math.exp((-a * b * (xa - xb) * (xa - xb)) / p) * F0(p * (xp - xc) * (xp - xc));
+    }
+    function eriPrim(a, b, c, d, xa, xb, xc, xd) {
+      const p = a + b;
+      const q = c + d;
+      const xp = (a * xa + b * xb) / p;
+      const xq = (c * xc + d * xd) / q;
+      return (
+        ((2 * Math.pow(Math.PI, 2.5)) / (p * q * Math.sqrt(p + q))) *
+        Math.exp((-a * b * (xa - xb) * (xa - xb)) / p - (c * d * (xc - xd) * (xc - xd)) / q) *
+        F0(((p * q) / (p + q)) * (xp - xq) * (xp - xq))
+      );
+    }
+    function contract2(fn, xa, xb) {
+      let s = 0;
+      const rab2 = (xa - xb) * (xa - xb);
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) s += DCOEF[i] * DCOEF[j] * fn(ALPHA[i], ALPHA[j], rab2);
+      return s;
+    }
+    function contractV(xa, xb, xc) {
+      let s = 0;
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) s += DCOEF[i] * DCOEF[j] * vPrim(ALPHA[i], ALPHA[j], xa, xb, xc);
+      return s;
+    }
+    function contractERI(xa, xb, xc, xd) {
+      let s = 0;
+      for (let i = 0; i < 3; i++)
+        for (let j = 0; j < 3; j++)
+          for (let k = 0; k < 3; k++)
+            for (let l = 0; l < 3; l++)
+              s += DCOEF[i] * DCOEF[j] * DCOEF[k] * DCOEF[l] * eriPrim(ALPHA[i], ALPHA[j], ALPHA[k], ALPHA[l], xa, xb, xc, xd);
+      return s;
+    }
+    // H₂ 在核間距 R(bohr)的 RHF 總能量(hartree)
+    // 對稱雙原子的最低 MO = (φ1+φ2)/√(2(1+S)),即為收斂的 SCF 解
+    function energy(R) {
+      const x1 = 0;
+      const x2 = R;
+      const s = contract2(sPrim, x1, x2);
+      const h11 = contract2(tPrim, x1, x1) + contractV(x1, x1, x1) + contractV(x1, x1, x2);
+      const h12 = contract2(tPrim, x1, x2) + contractV(x1, x2, x1) + contractV(x1, x2, x2);
+      const A = contractERI(x1, x1, x1, x1); // (11|11)
+      const B = contractERI(x1, x1, x2, x2); // (11|22)
+      const C = contractERI(x1, x2, x1, x2); // (12|12)
+      const D = contractERI(x1, x1, x1, x2); // (11|12)
+      const Eelec = (2 * (h11 + h12)) / (1 + s) + (A + B + 2 * C + 4 * D) / (2 * (1 + s) * (1 + s));
+      return Eelec + 1 / R;
+    }
+    return { energy };
+  })();
+
+  const BOHR = 0.529177;
+
+  function runHF() {
+    const btn = document.getElementById('btn-hf');
+    const svg = document.getElementById('svg-hf');
+    const textEl = document.getElementById('hf-text');
+    btn.disabled = true;
+
+    const pts = [];
+    for (let R = 0.7; R <= 5.0001; R += 0.043) pts.push({ R, E: HF.energy(R) });
+    let best = pts[0];
+    pts.forEach((p) => {
+      if (p.E < best.E) best = p;
+    });
+    let bR = best.R;
+    let bE = best.E;
+    for (let R = best.R - 0.06; R <= best.R + 0.06; R += 0.001) {
+      const E = HF.energy(R);
+      if (E < bE) {
+        bE = E;
+        bR = R;
+      }
+    }
+
+    // 繪圖範圍
+    const xMinA = 0.3;
+    const xMaxA = 2.7;
+    const eMax = Math.max(...pts.filter((p) => p.R * BOHR <= xMaxA).map((p) => p.E)) + 0.02;
+    const eMin = bE - 0.02;
+    const L = 70, Rm = 20, T = 14, Bm = 34;
+    const W = 900, Hh = 240;
+    const xPx = (Ra) => L + ((Ra - xMinA) / (xMaxA - xMinA)) * (W - L - Rm);
+    const yPx = (E) => T + ((eMax - E) / (eMax - eMin)) * (Hh - T - Bm);
+
+    svg.innerHTML = '';
+    const g = el('g', {});
+    svg.appendChild(g);
+    // 座標軸
+    g.appendChild(el('line', { x1: L, y1: T, x2: L, y2: Hh - Bm, stroke: '#99a1b3', 'stroke-width': 1 }));
+    g.appendChild(el('line', { x1: L, y1: Hh - Bm, x2: W - Rm, y2: Hh - Bm, stroke: '#99a1b3', 'stroke-width': 1 }));
+    for (let xa = 0.5; xa <= 2.6; xa += 0.5) {
+      const px = xPx(xa);
+      g.appendChild(el('line', { x1: px, y1: Hh - Bm, x2: px, y2: Hh - Bm + 4, stroke: '#99a1b3', 'stroke-width': 1 }));
+      const t = el('text', { x: px, y: Hh - Bm + 16, 'text-anchor': 'middle', 'font-size': 11, fill: '#667085' });
+      t.textContent = xa.toFixed(1);
+      g.appendChild(t);
+    }
+    const xl = el('text', { x: (L + W - Rm) / 2, y: Hh - 4, 'text-anchor': 'middle', 'font-size': 11, fill: '#667085' });
+    xl.textContent = '核間距 R(Å)';
+    g.appendChild(xl);
+    for (let ev = Math.ceil(eMin * 10) / 10; ev <= eMax; ev += 0.1) {
+      const py = yPx(ev);
+      g.appendChild(el('line', { x1: L - 4, y1: py, x2: L, y2: py, stroke: '#99a1b3', 'stroke-width': 1 }));
+      const t = el('text', { x: L - 7, y: py + 3.5, 'text-anchor': 'end', 'font-size': 10.5, fill: '#667085' });
+      t.textContent = ev.toFixed(1);
+      g.appendChild(t);
+    }
+    const yl = el('text', {
+      x: 14, y: (T + Hh - Bm) / 2, 'text-anchor': 'middle', 'font-size': 11, fill: '#667085',
+      transform: `rotate(-90 14 ${(T + Hh - Bm) / 2})`,
+    });
+    yl.textContent = 'E(hartree)';
+    g.appendChild(yl);
+    // 實驗鍵長參考線
+    const expX = xPx(0.741);
+    g.appendChild(el('line', { x1: expX, y1: T, x2: expX, y2: Hh - Bm, stroke: '#e8940a', 'stroke-width': 1, 'stroke-dasharray': '4,4' }));
+    const expT = el('text', { x: expX + 4, y: T + 12, 'font-size': 10.5, fill: '#e8940a' });
+    expT.textContent = '實驗值 0.741 Å';
+    g.appendChild(expT);
+
+    const path = el('path', { d: '', fill: 'none', stroke: '#3b5bdb', 'stroke-width': 2.5 });
+    g.appendChild(path);
+
+    // 逐點掃描動畫
+    let i = 0;
+    let d = '';
+    const drawn = pts.filter((p) => p.R * BOHR <= xMaxA);
+    const frame = () => {
+      for (let k = 0; k < 3 && i < drawn.length; k++, i++) {
+        const p = drawn[i];
+        d += (d ? 'L' : 'M') + xPx(p.R * BOHR).toFixed(1) + ',' + yPx(p.E).toFixed(1) + ' ';
+      }
+      path.setAttribute('d', d);
+      if (i < drawn.length) {
+        textEl.textContent = `掃描中… R = ${(drawn[Math.min(i, drawn.length - 1)].R * BOHR).toFixed(2)} Å,每一點都即時計算所有積分`;
+        textEl.className = 'status-line';
+        requestAnimationFrame(frame);
+      } else {
+        const mpx = xPx(bR * BOHR);
+        const mpy = yPx(bE);
+        g.appendChild(el('line', { x1: mpx, y1: mpy, x2: mpx, y2: Hh - Bm, stroke: '#1e824c', 'stroke-width': 1, 'stroke-dasharray': '3,3' }));
+        g.appendChild(el('circle', { cx: mpx, cy: mpy, r: 5, fill: '#1e824c' }));
+        const mt = el('text', { x: mpx + 8, y: mpy + 14, 'font-size': 11.5, 'font-weight': 700, fill: '#1e824c' });
+        mt.textContent = `Rₑ = ${(bR * BOHR).toFixed(3)} Å`;
+        g.appendChild(mt);
+        textEl.innerHTML =
+          `計算完成(${pts.length} 個距離點 × 每點完整積分):最佳化鍵長 <b>Rₑ = ${(bR * BOHR).toFixed(3)} Å</b>` +
+          `(實驗值 0.741 Å),最低能量 <b>E = ${bE.toFixed(4)} hartree</b>。` +
+          `與實驗的小差異來自最小基底(STO-3G)與 HF 平均場近似 —— 這正是計算化學要處理的課題。`;
+        textEl.className = 'status-line success';
+        btn.disabled = false;
+      }
+    };
+    requestAnimationFrame(frame);
+  }
+
   function init() {
     const orbitalButtonsEl = document.getElementById('orbital-buttons');
     ORBITAL_TYPES.forEach((o, idx) => {
@@ -269,6 +461,9 @@
       state.electrons = Number(electronSelect.value);
       renderAll();
     });
+
+    document.getElementById('btn-hf').addEventListener('click', runHF);
+    window.__hf = HF; // 測試用鉤子
 
     renderAll();
   }

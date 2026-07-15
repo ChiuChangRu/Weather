@@ -30,6 +30,7 @@
   let nextId = 1;
   let selectedId = null;
   let drag = null;
+  let paletteDrag = null;
   let trashHover = false;
   let cloudOn = false;
   let optimizing = false;
@@ -779,9 +780,6 @@
         e.stopPropagation();
         const p = toSvgPoint(e.clientX, e.clientY);
         drag = { id: a.id, sx: p.x, sy: p.y, moved: false };
-        try {
-          stage.setPointerCapture(e.pointerId);
-        } catch (_) {}
         e.preventDefault();
       });
       atomLayer.appendChild(g);
@@ -819,7 +817,11 @@
       nameDiv.className = 'pname';
       nameDiv.textContent = `${info.name}·價電子${info.valence}`;
       btn.appendChild(nameDiv);
-      btn.addEventListener('click', () => addAtom(key));
+      // 按住拖進畫布;只點一下則自動放入
+      btn.addEventListener('pointerdown', (e) => {
+        paletteDrag = { key, sx: e.clientX, sy: e.clientY, spawned: false };
+        e.preventDefault();
+      });
       wrap.appendChild(btn);
     });
   }
@@ -852,7 +854,26 @@
         render();
       }
     });
-    stage.addEventListener('pointermove', (e) => {
+    document.addEventListener('pointermove', (e) => {
+      // 從原子盒拖出:移動超過門檻才在指標位置生成原子
+      if (paletteDrag && !paletteDrag.spawned) {
+        if (Math.hypot(e.clientX - paletteDrag.sx, e.clientY - paletteDrag.sy) < 8) return;
+        const p = toSvgPoint(e.clientX, e.clientY);
+        const info = ELEMENTS[paletteDrag.key];
+        const a = {
+          id: nextId++,
+          el: paletteDrag.key,
+          x: Math.max(30, Math.min(STAGE_W - 30, p.x)),
+          y: Math.max(30, Math.min(STAGE_H - 30, p.y)),
+          electrons: info.valence,
+        };
+        atoms.push(a);
+        drag = { id: a.id, sx: p.x, sy: p.y, moved: true };
+        paletteDrag.spawned = true;
+        setStatus(`拖曳 ${info.name} ${paletteDrag.key} 到定位後放開。`);
+        render();
+        return;
+      }
       if (!drag) return;
       const a = atomById(drag.id);
       if (!a) return;
@@ -867,6 +888,10 @@
       render();
     });
     const endDrag = () => {
+      if (paletteDrag) {
+        if (!paletteDrag.spawned) addAtom(paletteDrag.key);
+        paletteDrag = null;
+      }
       if (drag && !drag.moved) {
         selectedId = selectedId === drag.id ? null : drag.id;
         render();
@@ -882,8 +907,8 @@
       }
       drag = null;
     };
-    stage.addEventListener('pointerup', endDrag);
-    stage.addEventListener('pointercancel', endDrag);
+    document.addEventListener('pointerup', endDrag);
+    document.addEventListener('pointercancel', endDrag);
 
     // 測試用鉤子(不影響使用)
     window.__lewis = {
