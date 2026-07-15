@@ -5,11 +5,38 @@
 
   // orb = 可用軌域數(決定二隅體/八隅體)；價電子先填未配對、再成對(洪德規則的簡化)
   const ELEMENTS = {
-    H: { valence: 1, orb: 1, color: '#aab4f7', r: 22, name: '氫', en: 2.2 },
-    C: { valence: 4, orb: 4, color: '#d6d6d6', r: 30, name: '碳', en: 2.55 },
-    N: { valence: 5, orb: 4, color: '#a8e6b8', r: 30, name: '氮', en: 3.04 },
-    O: { valence: 6, orb: 4, color: '#f5abc9', r: 30, name: '氧', en: 3.44 },
+    H: { valence: 1, orb: 1, color: '#aab4f7', r: 22, name: '氫', en: 2.2, mass: 1.008 },
+    C: { valence: 4, orb: 4, color: '#d6d6d6', r: 30, name: '碳', en: 2.55, mass: 12.011 },
+    N: { valence: 5, orb: 4, color: '#a8e6b8', r: 30, name: '氮', en: 3.04, mass: 14.007 },
+    O: { valence: 6, orb: 4, color: '#f5abc9', r: 30, name: '氧', en: 3.44, mass: 15.999 },
   };
+
+  // ---- 真實鍵長(Å)與 GVFF 近似力常數(mdyn/Å),供 3D 結構與振動計算使用 ----
+  const BOND_PARAMS = {};
+  function setBP(e1, e2, order, len, k) {
+    BOND_PARAMS[[e1, e2].sort().join('') + '-' + order] = { len, k };
+  }
+  setBP('H', 'H', 1, 0.74, 5.76);
+  setBP('C', 'H', 1, 1.09, 4.8);
+  setBP('N', 'H', 1, 1.01, 6.4);
+  setBP('O', 'H', 1, 0.96, 7.7);
+  setBP('C', 'C', 1, 1.54, 4.5);
+  setBP('C', 'C', 2, 1.34, 9.6);
+  setBP('C', 'C', 3, 1.2, 15.6);
+  setBP('C', 'N', 1, 1.47, 4.9);
+  setBP('C', 'N', 2, 1.28, 10.0);
+  setBP('C', 'O', 1, 1.43, 5.0);
+  setBP('C', 'O', 2, 1.21, 12.1);
+  setBP('N', 'N', 1, 1.45, 4.0);
+  setBP('N', 'N', 2, 1.25, 13.0);
+  setBP('N', 'N', 3, 1.1, 22.4);
+  setBP('O', 'O', 1, 1.48, 3.8);
+  setBP('O', 'O', 2, 1.21, 11.4);
+  function bondParams(e1, e2, order) {
+    return BOND_PARAMS[[e1, e2].sort().join('') + '-' + order] || { len: 1.4, k: 4.5 };
+  }
+  const LONE_WEIGHT = 1.35; // 孤對電子排斥比鍵結電子對強(VSEPR)
+  const ANGLE_K = 0.55; // mdyn·Å,通用彎曲力常數(簡化)
 
   const SUBSCRIPT = { 0: '₀', 1: '₁', 2: '₂', 3: '₃', 4: '₄', 5: '₅', 6: '₆', 7: '₇', 8: '₈', 9: '₉' };
 
@@ -34,6 +61,7 @@
   let trashHover = false;
   let cloudOn = false;
   let optimizing = false;
+  const rigidAtoms = new Set(); // 最佳化後鎖定的原子:只能整顆分子一起移動,不可再斷鍵
   const TRASH = { x: STAGE_W - 54, y: STAGE_H - 54, r: 32 };
   const doneTargets = new Set();
 
@@ -196,18 +224,26 @@
     setStatus(`${a.el}−${best.el} 形成單鍵!兩邊各出 1 個電子變成共用電子對。點一下鍵可試著升級成雙鍵/三鍵。`, 'success');
   }
 
+  function invalidate3D() {
+    mol3D = null;
+    modes3D = [];
+    vibPlaying = false;
+    renderVibPanel();
+  }
+
   function cycleBond(b) {
     const a1 = atomById(b.a);
     const a2 = atomById(b.b);
     if (b.order < 3 && derived(a1).unpaired > 0 && derived(a2).unpaired > 0) {
       b.order++;
-      setStatus(`${a1.el}−${a2.el} 升級為${b.order === 2 ? '雙' : '三'}鍵,共用 ${b.order} 對電子。`, 'success');
+      setStatus(`${a1.el}−${a2.el} 升級為${b.order === 2 ? '雙' : '三'}鍵,共用 ${b.order} 對電子。再按一次⚛最佳化更新立體結構與振動模式。`, 'success');
     } else if (b.order > 1) {
       b.order = 1;
       setStatus(`${a1.el}−${a2.el} 還原為單鍵。`);
     } else {
       setStatus('無法升級:兩端原子都必須還有未配對電子才能再共用一對。');
     }
+    invalidate3D();
     render();
   }
 
@@ -231,6 +267,7 @@
       a.electrons--;
       setStatus(`${a.el} 失去 1 個電子(變成陽離子方向),注意形式電荷的變化。`);
     }
+    invalidate3D();
     render();
   }
 
@@ -238,6 +275,8 @@
     bonds = bonds.filter((b) => b.a !== id && b.b !== id);
     atoms = atoms.filter((a) => a.id !== id);
     if (selectedId === id) selectedId = null;
+    rigidAtoms.delete(id);
+    invalidate3D();
   }
 
   function deleteSelected() {
@@ -288,7 +327,12 @@
     atoms = [];
     bonds = [];
     selectedId = null;
+    rigidAtoms.clear();
+    mol3D = null;
+    modes3D = [];
+    vibPlaying = false;
     setStatus('畫布已清空,從左側加入原子開始新的組合。');
+    renderVibPanel();
     render();
   }
 
@@ -430,10 +474,18 @@
       } else {
         optimizing = false;
         btn.disabled = false;
+        bonds.forEach((b) => {
+          rigidAtoms.add(b.a);
+          rigidAtoms.add(b.b);
+        });
         setStatus(
-          `最佳化完成!E:${E0.toFixed(2)} → ${E.toFixed(2)}。鍵長已落在能量最低的平衡距離(鍵級越高鍵越短),鍵角由電子對互斥(VSEPR)決定。真正的量子化學計算(如 Hartree–Fock)是解電子的薛丁格方程式,這裡是它的簡化示意。`,
+          `最佳化完成!E:${E0.toFixed(2)} → ${E.toFixed(2)}。鍵長已落在能量最低的平衡距離(鍵級越高鍵越短),鍵角由電子對互斥(VSEPR)決定。` +
+            `這顆分子現在鎖定成剛體 —— 只能整顆拖動,不能再拉斷單一個鍵。右側已產生立體結構與振動模式,可以點來看看。` +
+            `真正的量子化學計算(如 Hartree–Fock)是解電子的薛丁格方程式,這裡是它的簡化示意。`,
           'success'
         );
+        build3DAndVibrations();
+        render();
       }
     };
     requestAnimationFrame(frame);
@@ -712,6 +764,490 @@
     });
   }
 
+  // =====================================================================
+  // 3D 立體結構(VSEPR 電子群排斥)與振動模式(真實力常數 Hessian 對角化)
+  // =====================================================================
+  let mol3D = null; // { atoms:[{id,el,x,y,z}], bonds, phantoms:{id:[{x,y,z},...]} }
+  let modes3D = [];
+  let selectedMode = 0;
+  const view3D = { rotX: -0.35, rotY: 0.6 };
+  let vibPlaying = false;
+  let vibT0 = 0;
+
+  function jacobiEigen(Ain, maxSweeps) {
+    const n = Ain.length;
+    const A = Ain.map((row) => row.slice());
+    const V = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)));
+    for (let sweep = 0; sweep < (maxSweeps || 60); sweep++) {
+      let off = 0;
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) off += A[i][j] * A[i][j];
+      if (off < 1e-14) break;
+      for (let p = 0; p < n; p++) {
+        for (let q = p + 1; q < n; q++) {
+          if (Math.abs(A[p][q]) < 1e-15) continue;
+          const theta = (A[q][q] - A[p][p]) / (2 * A[p][q]);
+          const sign = theta >= 0 ? 1 : -1;
+          const t = sign / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+          const c = 1 / Math.sqrt(t * t + 1);
+          const s = t * c;
+          const app = A[p][p], aqq = A[q][q], apq = A[p][q];
+          A[p][p] = c * c * app - 2 * s * c * apq + s * s * aqq;
+          A[q][q] = s * s * app + 2 * s * c * apq + c * c * aqq;
+          A[p][q] = 0;
+          A[q][p] = 0;
+          for (let k = 0; k < n; k++) {
+            if (k !== p && k !== q) {
+              const akp = A[k][p], akq = A[k][q];
+              A[k][p] = A[p][k] = c * akp - s * akq;
+              A[k][q] = A[q][k] = s * akp + c * akq;
+            }
+          }
+          for (let k = 0; k < n; k++) {
+            const vkp = V[k][p], vkq = V[k][q];
+            V[k][p] = c * vkp - s * vkq;
+            V[k][q] = s * vkp + c * vkq;
+          }
+        }
+      }
+    }
+    const eigenvalues = A.map((row, i) => row[i]);
+    const order = eigenvalues.map((_, i) => i).sort((i, j) => eigenvalues[i] - eigenvalues[j]);
+    return {
+      values: order.map((i) => eigenvalues[i]),
+      vectors: order.map((i) => V.map((row) => row[i])),
+    };
+  }
+
+  function lonePairCountFor(atomLike) {
+    return derived(atomLike).pairs;
+  }
+
+  // 用目前的 2D 連接關係(bonds/atoms)建立一組獨立的 3D 座標,
+  // 以電子群排斥(VSEPR)+ 真實鍵長彈簧,從隨機起點鬆弛到平衡結構
+  function build3DGeometry() {
+    const real = atoms.map((a) => ({
+      id: a.id,
+      el: a.el,
+      x: (Math.random() - 0.5) * 0.6,
+      y: (Math.random() - 0.5) * 0.6,
+      z: (Math.random() - 0.5) * 0.6,
+    }));
+    const byId = new Map(real.map((a) => [a.id, a]));
+    const nbIds = new Map();
+    atoms.forEach((a) => nbIds.set(a.id, []));
+    bonds.forEach((b) => {
+      nbIds.get(b.a).push(b.b);
+      nbIds.get(b.b).push(b.a);
+    });
+    const phantoms = new Map();
+    atoms.forEach((a) => {
+      const n = lonePairCountFor(a);
+      const arr = [];
+      for (let i = 0; i < n; i++) {
+        const th = Math.random() * Math.PI * 2;
+        const ph = Math.acos(2 * Math.random() - 1);
+        arr.push({ x: Math.sin(ph) * Math.cos(th), y: Math.sin(ph) * Math.sin(th), z: Math.cos(ph) });
+      }
+      phantoms.set(a.id, arr);
+    });
+
+    function norm(v) {
+      const n = Math.hypot(v.x, v.y, v.z) || 1;
+      return { x: v.x / n, y: v.y / n, z: v.z / n };
+    }
+    function sub(a, b) {
+      return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+    }
+    function dot(a, b) {
+      return a.x * b.x + a.y * b.y + a.z * b.z;
+    }
+
+    const STEPS = 1400;
+    for (let step = 0; step < STEPS; step++) {
+      const stepScale = 1 - step / STEPS;
+      // 鍵長彈簧(真實 Å)
+      bonds.forEach((b) => {
+        const a1 = byId.get(b.a);
+        const a2 = byId.get(b.b);
+        const p = bondParams(a1.el, a2.el, b.order);
+        const d = sub(a2, a1);
+        const len = Math.hypot(d.x, d.y, d.z) || 1e-6;
+        const err = len - p.len;
+        const s = (err * 0.35 * stepScale) / len;
+        a1.x += d.x * s; a1.y += d.y * s; a1.z += d.z * s;
+        a2.x -= d.x * s; a2.y -= d.y * s; a2.z -= d.z * s;
+      });
+      // 電子群互斥(VSEPR):把鍵方向與孤對方向當成球面上互相排斥的點電荷
+      // (真正的 Thomson 問題),讓線形/三角形/四面體角度自然浮現,不用硬套角度表
+      atoms.forEach((c) => {
+        const nb = nbIds.get(c.id);
+        const lone = phantoms.get(c.id);
+        const domainCount = nb.length + lone.length;
+        if (domainCount < 2) return;
+        const cPos = byId.get(c.id);
+        const domains = [
+          ...nb.map((id) => ({ kind: 'real', id, dir: norm(sub(byId.get(id), cPos)) })),
+          ...lone.map((v, i) => ({ kind: 'lone', i, dir: norm(v) })),
+        ];
+        const forces = domains.map(() => ({ x: 0, y: 0, z: 0 }));
+        for (let i = 0; i < domains.length; i++) {
+          for (let j = i + 1; j < domains.length; j++) {
+            const weight = (domains[i].kind === 'lone' ? LONE_WEIGHT : 1) * (domains[j].kind === 'lone' ? LONE_WEIGHT : 1);
+            let dx = domains[i].dir.x - domains[j].dir.x;
+            let dy = domains[i].dir.y - domains[j].dir.y;
+            let dz = domains[i].dir.z - domains[j].dir.z;
+            let d = Math.hypot(dx, dy, dz);
+            if (d < 1e-4) {
+              dx += (Math.random() - 0.5) * 0.02; dy += (Math.random() - 0.5) * 0.02; dz += (Math.random() - 0.5) * 0.02;
+              d = Math.hypot(dx, dy, dz) || 1e-3;
+            }
+            const mag = weight / (d * d * d); // 反平方庫侖力(用弦長,等效於球面反平方排斥)
+            const fx = (dx / d) * mag, fy = (dy / d) * mag, fz = (dz / d) * mag;
+            forces[i].x += fx; forces[i].y += fy; forces[i].z += fz;
+            forces[j].x -= fx; forces[j].y -= fy; forces[j].z -= fz;
+          }
+        }
+        domains.forEach((dom, i) => {
+          const f = forces[i];
+          const radial = f.x * dom.dir.x + f.y * dom.dir.y + f.z * dom.dir.z;
+          const tx = f.x - radial * dom.dir.x, ty = f.y - radial * dom.dir.y, tz = f.z - radial * dom.dir.z;
+          const rate = 0.02 + 0.12 * stepScale;
+          dom.dir = norm({ x: dom.dir.x + tx * rate, y: dom.dir.y + ty * rate, z: dom.dir.z + tz * rate });
+        });
+        domains.forEach((d) => {
+          if (d.kind === 'real') {
+            const p = bondParams(c.el, byId.get(d.id).el, (bonds.find((b) => (b.a === c.id && b.b === d.id) || (b.b === c.id && b.a === d.id)) || {}).order || 1);
+            const target = byId.get(d.id);
+            target.x = cPos.x + d.dir.x * p.len;
+            target.y = cPos.y + d.dir.y * p.len;
+            target.z = cPos.z + d.dir.z * p.len;
+          } else {
+            lone[d.i] = d.dir;
+          }
+        });
+      });
+      // 非鍵結原子間輕微排斥,避免不同分子/片段重疊
+      for (let i = 0; i < real.length; i++) {
+        for (let j = i + 1; j < real.length; j++) {
+          const a1 = real[i], a2 = real[j];
+          if (bondBetween(a1.id, a2.id)) continue;
+          const minD = 1.6;
+          const d = sub(a2, a1);
+          const len = Math.hypot(d.x, d.y, d.z) || 1e-6;
+          if (len < minD) {
+            const s = ((minD - len) * 0.15 * stepScale) / len;
+            a1.x -= d.x * s; a1.y -= d.y * s; a1.z -= d.z * s;
+            a2.x += d.x * s; a2.y += d.y * s; a2.z += d.z * s;
+          }
+        }
+      }
+    }
+    // 置中
+    const cx = real.reduce((s, a) => s + a.x, 0) / real.length;
+    const cy = real.reduce((s, a) => s + a.y, 0) / real.length;
+    const cz = real.reduce((s, a) => s + a.z, 0) / real.length;
+    real.forEach((a) => { a.x -= cx; a.y -= cy; a.z -= cz; });
+
+    // 記錄鬆弛完成後「真正的」鍵角,供 Hessian 使用(只用真實原子,不含孤對虛點,
+    // 這樣旋轉/平移絕對不變,孤對的影響已經反映在這個角度數值本身裡)
+    const angleRefs = [];
+    atoms.forEach((c) => {
+      const nb = nbIds.get(c.id);
+      if (nb.length < 2) return;
+      const cPos = byId.get(c.id);
+      for (let i = 0; i < nb.length; i++) {
+        for (let j = i + 1; j < nb.length; j++) {
+          const p1 = byId.get(nb[i]);
+          const p2 = byId.get(nb[j]);
+          const v1 = norm({ x: p1.x - cPos.x, y: p1.y - cPos.y, z: p1.z - cPos.z });
+          const v2 = norm({ x: p2.x - cPos.x, y: p2.y - cPos.y, z: p2.z - cPos.z });
+          const cosT = Math.max(-1, Math.min(1, dot(v1, v2)));
+          angleRefs.push({ atomId: c.id, i: nb[i], j: nb[j], theta0: Math.acos(cosT) });
+        }
+      }
+    });
+
+    return { atoms: real, bonds: bonds.map((b) => ({ ...b })), phantoms, angleRefs };
+  }
+
+  // 以真實鍵長/力常數與 VSEPR 彎曲項組成的位能面(僅核座標),供數值 Hessian 使用
+  function energy3D(flatCoords, mol) {
+    const pos = mol.atoms.map((a, i) => ({ x: flatCoords[3 * i], y: flatCoords[3 * i + 1], z: flatCoords[3 * i + 2] }));
+    const idx = new Map(mol.atoms.map((a, i) => [a.id, i]));
+    let E = 0;
+    mol.bonds.forEach((b) => {
+      const a1 = mol.atoms[idx.get(b.a)];
+      const p1 = pos[idx.get(b.a)];
+      const a2 = mol.atoms[idx.get(b.b)];
+      const p2 = pos[idx.get(b.b)];
+      const bp = bondParams(a1.el, a2.el, b.order);
+      const d = Math.hypot(p1.x - p2.x, p1.y - p2.y, p1.z - p2.z);
+      E += 0.5 * bp.k * (d - bp.len) * (d - bp.len);
+    });
+    // 彎曲項:只用「真實原子」之間的鍵角(相對於鬆弛後量到的平衡角),
+    // 完全不涉及孤對虛點,因此對整體平移/旋轉絕對不變(不會污染振動模式)
+    (mol.angleRefs || []).forEach((ref) => {
+      const cPos = pos[idx.get(ref.atomId)];
+      const p1 = pos[idx.get(ref.i)];
+      const p2 = pos[idx.get(ref.j)];
+      const v1 = { x: p1.x - cPos.x, y: p1.y - cPos.y, z: p1.z - cPos.z };
+      const v2 = { x: p2.x - cPos.x, y: p2.y - cPos.y, z: p2.z - cPos.z };
+      const n1 = Math.hypot(v1.x, v1.y, v1.z) || 1;
+      const n2 = Math.hypot(v2.x, v2.y, v2.z) || 1;
+      const cosT = Math.max(-1, Math.min(1, (v1.x * v2.x + v1.y * v2.y + v1.z * v2.z) / (n1 * n2)));
+      const theta = Math.acos(cosT);
+      const dth = theta - ref.theta0;
+      E += 0.5 * ANGLE_K * dth * dth;
+    });
+    return E;
+  }
+
+  function numericalHessian(fn, x0, h) {
+    const n = x0.length;
+    const H = Array.from({ length: n }, () => new Array(n).fill(0));
+    const f0 = fn(x0);
+    for (let i = 0; i < n; i++) {
+      const xp = x0.slice(); xp[i] += h;
+      const xm = x0.slice(); xm[i] -= h;
+      H[i][i] = (fn(xp) - 2 * f0 + fn(xm)) / (h * h);
+    }
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const xpp = x0.slice(); xpp[i] += h; xpp[j] += h;
+        const xpm = x0.slice(); xpm[i] += h; xpm[j] -= h;
+        const xmp = x0.slice(); xmp[i] -= h; xmp[j] += h;
+        const xmm = x0.slice(); xmm[i] -= h; xmm[j] -= h;
+        const v = (fn(xpp) - fn(xpm) - fn(xmp) + fn(xmm)) / (4 * h * h);
+        H[i][j] = v;
+        H[j][i] = v;
+      }
+    }
+    return H;
+  }
+
+  function isLinearMolecule(mol) {
+    if (mol.atoms.length <= 2) return true;
+    const nbIds = new Map();
+    mol.atoms.forEach((a) => nbIds.set(a.id, []));
+    mol.bonds.forEach((b) => {
+      nbIds.get(b.a).push(b.b);
+      nbIds.get(b.b).push(b.a);
+    });
+    let checked = false;
+    let allLinear = true;
+    mol.atoms.forEach((c) => {
+      const nb = nbIds.get(c.id);
+      if (nb.length !== 2) return;
+      checked = true;
+      const p0 = mol.atoms.find((a) => a.id === nb[0]);
+      const p1 = mol.atoms.find((a) => a.id === nb[1]);
+      const v1 = norm3(p0.x - c.x, p0.y - c.y, p0.z - c.z);
+      const v2 = norm3(p1.x - c.x, p1.y - c.y, p1.z - c.z);
+      const cosT = v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+      if (cosT >= -0.97) allLinear = false;
+    });
+    return checked && allLinear;
+  }
+  function norm3(x, y, z) {
+    const n = Math.hypot(x, y, z) || 1;
+    return { x: x / n, y: y / n, z: z / n };
+  }
+
+  function computeNormalModes(mol) {
+    const N = mol.atoms.length;
+    if (N < 2) return [];
+    const x0 = [];
+    mol.atoms.forEach((a) => x0.push(a.x, a.y, a.z));
+    const H = numericalHessian((v) => energy3D(v, mol), x0, 0.015);
+    const masses = mol.atoms.map((a) => ELEMENTS[a.el].mass);
+    const Hmw = H.map((row, i) =>
+      row.map((v, j) => v / Math.sqrt(masses[Math.floor(i / 3)] * masses[Math.floor(j / 3)]))
+    );
+    const { values, vectors } = jacobiEigen(Hmw, 80);
+    const linear = isLinearMolecule(mol);
+    const nZero = linear ? 5 : 6;
+    const nModes = Math.max(0, 3 * N - nZero);
+    const kept = values
+      .map((v, i) => ({ v, vec: vectors[i] }))
+      .slice(values.length - nModes); // 最大的 nModes 個(平移/旋轉的零模在最小處)
+
+    return kept
+      .map(({ v, vec }) => {
+        const freq = v > 0 ? 1303 * Math.sqrt(v) : 0;
+        const disp = mol.atoms.map((a, i) => ({
+          x: vec[3 * i] / Math.sqrt(masses[i]),
+          y: vec[3 * i + 1] / Math.sqrt(masses[i]),
+          z: vec[3 * i + 2] / Math.sqrt(masses[i]),
+        }));
+        const maxD = Math.max(...disp.map((d) => Math.hypot(d.x, d.y, d.z)), 1e-6);
+        disp.forEach((d) => { d.x /= maxD; d.y /= maxD; d.z /= maxD; });
+        // 分類:看哪個鍵的鍵長變化量最大,標記是伸縮還是彎曲為主
+        let bestBond = null;
+        let bestStretch = 0;
+        mol.bonds.forEach((b) => {
+          const i1 = mol.atoms.findIndex((a) => a.id === b.a);
+          const i2 = mol.atoms.findIndex((a) => a.id === b.b);
+          const a1 = mol.atoms[i1], a2 = mol.atoms[i2];
+          const bd = norm3(a2.x - a1.x, a2.y - a1.y, a2.z - a1.z);
+          const rate = Math.abs((disp[i2].x - disp[i1].x) * bd.x + (disp[i2].y - disp[i1].y) * bd.y + (disp[i2].z - disp[i1].z) * bd.z);
+          if (rate > bestStretch) {
+            bestStretch = rate;
+            bestBond = `${a1.el}-${a2.el}`;
+          }
+        });
+        const totalMotion = disp.reduce((s, d) => s + Math.hypot(d.x, d.y, d.z), 0);
+        const stretchFrac = totalMotion > 0 ? bestStretch / (totalMotion / mol.bonds.length || 1) : 0;
+        const type = stretchFrac > 0.6 ? '伸縮' : '彎曲';
+        return { freq, disp, type, bondLabel: bestBond };
+      })
+      .sort((a, b) => b.freq - a.freq);
+  }
+
+  function build3DAndVibrations() {
+    mol3D = build3DGeometry();
+    modes3D = computeNormalModes(mol3D);
+    selectedMode = 0;
+    vibPlaying = false;
+    renderVibPanel();
+    renderMolecule3D();
+  }
+
+  // ---- 3D 檢視器(可拖曳旋轉) ----
+  function project3D(p) {
+    const cy = Math.cos(view3D.rotY), sy = Math.sin(view3D.rotY);
+    const cx = Math.cos(view3D.rotX), sx = Math.sin(view3D.rotX);
+    const x1 = p.x * cy + p.z * sy;
+    const z1 = -p.x * sy + p.z * cy;
+    const y1 = p.y * cx - z1 * sx;
+    const z2 = p.y * sx + z1 * cx;
+    return { x: x1, y: y1, z: z2 };
+  }
+
+  function currentMol3DPositions() {
+    if (!mol3D) return [];
+    if (!vibPlaying || !modes3D[selectedMode]) return mol3D.atoms.map((a) => ({ ...a }));
+    const mode = modes3D[selectedMode];
+    const t = (performance.now() - vibT0) / 260;
+    const amp = 0.32 * Math.sin(t);
+    return mol3D.atoms.map((a, i) => ({
+      id: a.id,
+      el: a.el,
+      x: a.x + mode.disp[i].x * amp,
+      y: a.y + mode.disp[i].y * amp,
+      z: a.z + mode.disp[i].z * amp,
+    }));
+  }
+
+  function renderMolecule3D() {
+    const svg = document.getElementById('svg-3d');
+    if (!svg || !mol3D) return;
+    svg.innerHTML = '';
+    const W = 280, H = 260, cx = W / 2, cyc = H / 2;
+    const scale = 62;
+    const positions = currentMol3DPositions().map((a) => ({ ...a, proj: project3D(a) }));
+    const g = el('g', {});
+    // 畫鍵(依兩端平均深度排序,再與原子一起做繪圖器演算法排序)
+    const bondDraw = mol3D.bonds.map((b) => {
+      const p1 = positions.find((x) => x.id === b.a);
+      const p2 = positions.find((x) => x.id === b.b);
+      return { b, p1, p2, z: (p1.proj.z + p2.proj.z) / 2 };
+    });
+    const drawList = [...bondDraw.map((x) => ({ kind: 'bond', z: x.z, data: x })), ...positions.map((p) => ({ kind: 'atom', z: p.proj.z, data: p }))];
+    drawList.sort((a, b) => a.z - b.z);
+    drawList.forEach((item) => {
+      if (item.kind === 'bond') {
+        const { p1, p2 } = item.data;
+        const x1 = cx + p1.proj.x * scale, y1 = cyc - p1.proj.y * scale;
+        const x2 = cx + p2.proj.x * scale, y2 = cyc - p2.proj.y * scale;
+        g.appendChild(el('line', { x1, y1, x2, y2, stroke: '#8a8f9c', 'stroke-width': 5 }));
+      } else {
+        const a = item.data;
+        const depthScale = 1 + a.proj.z * 0.12;
+        const r = (a.el === 'H' ? 9 : 13) * depthScale;
+        const x = cx + a.proj.x * scale, y = cyc - a.proj.y * scale;
+        g.appendChild(el('circle', { cx: x, cy: y, r, fill: ELEMENTS[a.el].color, stroke: '#555', 'stroke-width': 1.3 }));
+        const t = el('text', { x, y, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': r * 0.85, 'font-weight': 700, fill: '#222' });
+        t.textContent = a.el;
+        g.appendChild(t);
+      }
+    });
+    svg.appendChild(g);
+    if (vibPlaying) requestAnimationFrame(renderMolecule3D);
+  }
+
+  function initVib3DDrag() {
+    const svg = document.getElementById('svg-3d');
+    if (!svg) return;
+    let rotating = null;
+    svg.addEventListener('pointerdown', (e) => {
+      rotating = { sx: e.clientX, sy: e.clientY, rx: view3D.rotX, ry: view3D.rotY };
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!rotating) return;
+      view3D.rotY = rotating.ry + (e.clientX - rotating.sx) * 0.012;
+      view3D.rotX = Math.max(-1.4, Math.min(1.4, rotating.rx + (e.clientY - rotating.sy) * 0.012));
+      if (!vibPlaying) renderMolecule3D();
+    });
+    window.addEventListener('pointerup', () => { rotating = null; });
+  }
+
+  // ---- 振動模式面板:按下後在小型頻譜軸標出位置,並播放 3D 動畫 ----
+  function drawMiniSpectrum(freq) {
+    const svg = document.getElementById('svg-vib-axis');
+    if (!svg) return;
+    svg.innerHTML = '';
+    const xHi = 4000, xLo = 400, Lm = 12, Rm = 12, W = 280;
+    const xPx = (w) => Lm + ((xHi - w) / (xHi - xLo)) * (W - Lm - Rm);
+    const g = el('g', {});
+    g.appendChild(el('line', { x1: Lm, y1: 26, x2: W - Rm, y2: 26, stroke: '#99a1b3', 'stroke-width': 2 }));
+    [4000, 3000, 2000, 1000, 400].forEach((w) => {
+      const x = xPx(w);
+      g.appendChild(el('line', { x1: x, y1: 22, x2: x, y2: 30, stroke: '#99a1b3', 'stroke-width': 1 }));
+      const t = el('text', { x, y: 42, 'text-anchor': 'middle', 'font-size': 9.5, fill: '#667085' });
+      t.textContent = w;
+      g.appendChild(t);
+    });
+    if (freq > 0) {
+      const x = xPx(Math.max(xLo, Math.min(xHi, freq)));
+      g.appendChild(el('circle', { cx: x, cy: 26, r: 6, fill: '#e8940a' }));
+      g.appendChild(el('line', { x1: x, y1: 6, x2: x, y2: 20, stroke: '#e8940a', 'stroke-width': 2 }));
+      const t = el('text', { x, y: 4, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700, fill: '#e8940a' });
+      t.textContent = `${freq.toFixed(0)} cm⁻¹`;
+      g.appendChild(t);
+    }
+    svg.appendChild(g);
+  }
+
+  function renderVibPanel() {
+    const wrap = document.getElementById('vib-mode-list');
+    const axisWrap = document.getElementById('vib-axis-wrap');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    if (!mol3D || modes3D.length === 0) {
+      wrap.innerHTML = '<p class="tiny">按「⚛ 鍵長最佳化」後,這裡會列出這顆分子真正算出來的振動模式(依真實原子質量與鍵力常數,對位能面做 Hessian 對角化)。</p>';
+      if (axisWrap) axisWrap.style.display = 'none';
+      const svg3d = document.getElementById('svg-3d');
+      if (svg3d) svg3d.innerHTML = '';
+      return;
+    }
+    if (axisWrap) axisWrap.style.display = '';
+    modes3D.forEach((m, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'orb-btn vib-btn' + (i === selectedMode ? ' active' : '');
+      btn.textContent = `${m.bondLabel || ''} ${m.type} ${m.freq.toFixed(0)} cm⁻¹`;
+      btn.addEventListener('click', () => {
+        selectedMode = i;
+        vibPlaying = true;
+        vibT0 = performance.now();
+        renderVibPanel();
+        drawMiniSpectrum(m.freq);
+        requestAnimationFrame(renderMolecule3D);
+      });
+      wrap.appendChild(btn);
+    });
+    drawMiniSpectrum(modes3D[selectedMode].freq);
+  }
+
   function components() {
     const seen = new Set();
     const comps = [];
@@ -862,7 +1398,7 @@
         geomEl.innerHTML =
           `<h4>目前的幾何:鍵長與鍵角</h4>` +
           `<p class="tiny"><b>鍵長</b>(相對單位,括號為平衡值;鍵級越高越短)<br>${bl}</p>` +
-          `<p class="tiny"><b>鍵角</b><br>${al}</p>`;
+          `<p class="tiny"><b>鍵角</b>(畫布是攤平的 2D 示意圖,例如四面體在這裡只會看到 90°;真正的立體角度請看下面的「🧊 立體結構」)<br>${al}</p>`;
       }
     }
 
@@ -1116,12 +1652,41 @@
       if (!a) return;
       const p = toSvgPoint(e.clientX, e.clientY);
       if (!drag.moved && Math.hypot(p.x - drag.sx, p.y - drag.sy) < 6) return;
+      const wasMoved = drag.moved;
       drag.moved = true;
-      a.x = Math.max(30, Math.min(STAGE_W - 30, p.x));
-      a.y = Math.max(30, Math.min(STAGE_H - 30, p.y));
-      trashHover = Math.hypot(a.x - TRASH.x, a.y - TRASH.y) < TRASH.r + 10;
-      checkBreak(a);
-      if (!trashHover) checkForm(a);
+      if (rigidAtoms.has(a.id)) {
+        // 已最佳化的分子:整顆一起平移,鍵不會斷
+        if (drag.lastX == null) {
+          drag.lastX = wasMoved ? a.x : drag.sx;
+          drag.lastY = wasMoved ? a.y : drag.sy;
+        }
+        const dx = p.x - drag.lastX;
+        const dy = p.y - drag.lastY;
+        drag.lastX = p.x;
+        drag.lastY = p.y;
+        const comp = components().find((c) => c.some((x) => x.id === a.id)) || [a];
+        comp.forEach((atom) => {
+          atom.x += dx;
+          atom.y += dy;
+        });
+        const minX = Math.min(...comp.map((x) => x.x - ELEMENTS[x.el].r));
+        const maxX = Math.max(...comp.map((x) => x.x + ELEMENTS[x.el].r));
+        const minY = Math.min(...comp.map((x) => x.y - ELEMENTS[x.el].r));
+        const maxY = Math.max(...comp.map((x) => x.y + ELEMENTS[x.el].r));
+        let shiftX = 0, shiftY = 0;
+        if (minX < 4) shiftX = 4 - minX;
+        if (maxX > STAGE_W - 4) shiftX = STAGE_W - 4 - maxX;
+        if (minY < 4) shiftY = 4 - minY;
+        if (maxY > STAGE_H - 4) shiftY = STAGE_H - 4 - maxY;
+        if (shiftX || shiftY) comp.forEach((atom) => { atom.x += shiftX; atom.y += shiftY; });
+        trashHover = Math.hypot(a.x - TRASH.x, a.y - TRASH.y) < TRASH.r + 10;
+      } else {
+        a.x = Math.max(30, Math.min(STAGE_W - 30, p.x));
+        a.y = Math.max(30, Math.min(STAGE_H - 30, p.y));
+        trashHover = Math.hypot(a.x - TRASH.x, a.y - TRASH.y) < TRASH.r + 10;
+        checkBreak(a);
+        if (!trashHover) checkForm(a);
+      }
       render();
     });
     const endDrag = () => {
@@ -1133,9 +1698,16 @@
         selectedId = selectedId === drag.id ? null : drag.id;
         render();
       } else if (drag && drag.moved && trashHover) {
-        const a = atomById(drag.id);
-        deleteAtomById(drag.id);
-        setStatus(`已把 ${a ? a.el : ''} 原子丟進垃圾桶刪除。`);
+        if (rigidAtoms.has(drag.id)) {
+          const comp = components().find((c) => c.some((x) => x.id === drag.id)) || [];
+          comp.forEach((x) => rigidAtoms.delete(x.id));
+          comp.forEach((x) => deleteAtomById(x.id));
+          setStatus('已把整顆分子丟進垃圾桶刪除。');
+        } else {
+          const a = atomById(drag.id);
+          deleteAtomById(drag.id);
+          setStatus(`已把 ${a ? a.el : ''} 原子丟進垃圾桶刪除。`);
+        }
         trashHover = false;
         render();
       } else if (trashHover) {
@@ -1147,12 +1719,18 @@
     document.addEventListener('pointerup', endDrag);
     document.addEventListener('pointercancel', endDrag);
 
+    initVib3DDrag();
+
     // 測試用鉤子(不影響使用)
     window.__lewis = {
       atoms: () => atoms.map((a) => ({ ...a, ...derived(a) })),
       bonds: () => bonds.map((b) => ({ ...b })),
+      isRigid: (id) => rigidAtoms.has(id),
+      modes: () => modes3D.map((m) => ({ freq: m.freq, type: m.type, bondLabel: m.bondLabel })),
+      mol3D: () => mol3D,
     };
 
+    renderVibPanel();
     render();
   }
 

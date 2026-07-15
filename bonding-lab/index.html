@@ -4,14 +4,14 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>化學鍵結互動教學 — 共價鍵形成 與 LCAO 分子軌域理論</title>
-<link rel="stylesheet" href="style.css?v=7" />
+<link rel="stylesheet" href="style.css?v=9" />
 </head>
 <body>
 
 <header class="app-header">
   <div class="header-row">
     <figure class="pauling-fig">
-      <img src="pauling.png?v=7" alt="Linus Pauling" class="pauling-img"
+      <img src="pauling.png?v=9" alt="Linus Pauling" class="pauling-img"
            onerror="if(!this.dataset.f){this.dataset.f=1;this.src='https://commons.wikimedia.org/wiki/Special:FilePath/Linus%20Pauling%201962.jpg?width=300';}else{this.onerror=null;this.src='pauling.svg';}" />
       <figcaption>Linus Pauling<br>《化學鍵的本質》</figcaption>
     </figure>
@@ -56,6 +56,19 @@
       <aside class="info-panel">
         <div class="info-card" id="selected-panel"></div>
         <div class="info-card" id="geom-panel"></div>
+        <div class="info-card">
+          <h4>🧊 立體結構（3D，拖曳可旋轉）</h4>
+          <svg id="svg-3d" viewBox="0 0 280 260" style="width:100%;height:auto;cursor:grab;touch-action:none;background:#fafbfd;border-radius:8px"></svg>
+          <p class="tiny">最佳化後才會產生。用滑鼠拖曳可以旋轉觀察真正的立體形狀（例如 H₂O 是彎的、CH₄ 是四面體、CO₂ 是直線）。</p>
+        </div>
+        <div class="info-card">
+          <h4>🎵 振動模式（點一下看光譜位置）</h4>
+          <div class="orbital-buttons" id="vib-mode-list"></div>
+          <div id="vib-axis-wrap" style="display:none;margin-top:6px">
+            <svg id="svg-vib-axis" viewBox="0 0 280 46" style="width:100%;height:auto"></svg>
+            <p class="tiny">橙點＝這個振動模式在紅外光譜上的波數位置（cm⁻¹）。3D 圖會同步播放這個模式的振動動畫。</p>
+          </div>
+        </div>
         <div class="info-card">
           <h4>價電子・可成鍵數・電負度</h4>
           <table class="ref">
@@ -225,8 +238,8 @@
   <p>多數圖示為教學用簡化示意；「H₂ Hartree–Fock」面板為真實的從頭計算（RHF／STO-3G）。</p>
 </footer>
 
-<script src="main.js?v=7"></script>
-<script src="lewis.js?v=7"></script>
-<script src="lcao.js?v=7"></script>
+<script src="main.js?v=9"></script>
+<script src="lewis.js?v=9"></script>
+<script src="lcao.js?v=9"></script>
 </body>
 </html>

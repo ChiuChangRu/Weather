@@ -254,6 +254,9 @@ details.side-note {
 
 .pname.pen { color: #8a93a8; font-size: 0.62rem; }
 
+#vib-mode-list { flex-direction: column; }
+.vib-btn { width: 100%; text-align: left; font-size: 0.78rem; }
+
 .fc-formula {
   background: #f4f6fb;
   border: 1px solid var(--border);
