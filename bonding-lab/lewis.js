@@ -52,6 +52,19 @@
     { key: 'C1H2O1', label: 'CH₂O 甲醛' },
   ];
 
+  // 一鍵生成:原子種類 + 鍵結列表 [原子索引a, 原子索引b, 鍵級]
+  const PRESETS = {
+    H2: { els: ['H', 'H'], bonds: [[0, 1, 1]] },
+    O2: { els: ['O', 'O'], bonds: [[0, 1, 2]] },
+    N2: { els: ['N', 'N'], bonds: [[0, 1, 3]] },
+    H2O1: { els: ['O', 'H', 'H'], bonds: [[0, 1, 1], [0, 2, 1]] },
+    H3N1: { els: ['N', 'H', 'H', 'H'], bonds: [[0, 1, 1], [0, 2, 1], [0, 3, 1]] },
+    C1H4: { els: ['C', 'H', 'H', 'H', 'H'], bonds: [[0, 1, 1], [0, 2, 1], [0, 3, 1], [0, 4, 1]] },
+    C1O2: { els: ['C', 'O', 'O'], bonds: [[0, 1, 2], [0, 2, 2]] },
+    H2O2: { els: ['O', 'O', 'H', 'H'], bonds: [[0, 1, 1], [0, 2, 1], [1, 3, 1]] },
+    C1H2O1: { els: ['C', 'H', 'H', 'O'], bonds: [[0, 1, 1], [0, 2, 1], [0, 3, 2]] },
+  };
+
   let atoms = [];
   let bonds = [];
   let nextId = 1;
@@ -62,6 +75,7 @@
   let cloudOn = false;
   let optimizing = false;
   const rigidAtoms = new Set(); // 最佳化後鎖定的原子:只能整顆分子一起移動,不可再斷鍵
+  const rigidSlotOf = new Map(); // atomId -> {cx,cy,scale}:這顆原子所屬分子在畫布上的中心與縮放,3D 投影用
   const TRASH = { x: STAGE_W - 54, y: STAGE_H - 54, r: 32 };
   const doneTargets = new Set();
 
@@ -185,6 +199,28 @@
     render();
   }
 
+  // 一鍵生成上方清單裡的常見分子,不用自己拖,並自動跑最佳化直接看立體結構/振動/IR
+  function buildPresetMolecule(key) {
+    const spec = PRESETS[key];
+    if (!spec) return;
+    clearAll();
+    const cx = STAGE_W / 2, cy = STAGE_H / 2;
+    const newIds = spec.els.map((elKey, i) => {
+      const info = ELEMENTS[elKey];
+      const angle = (i / spec.els.length) * 2 * Math.PI;
+      const id = nextId++;
+      atoms.push({ id, el: elKey, x: cx + Math.cos(angle) * 70, y: cy + Math.sin(angle) * 70, electrons: info.valence });
+      return id;
+    });
+    spec.bonds.forEach(([i, j, order]) => {
+      bonds.push({ a: newIds[i], b: newIds[j], order });
+    });
+    const label = TARGETS.find((t) => t.key === key)?.label || key;
+    setStatus(`已直接生成 ${label},正在自動最佳化…`, 'success');
+    render();
+    runOptimize();
+  }
+
   function formDist(a, b) {
     return ELEMENTS[a.el].r + ELEMENTS[b.el].r + 34;
   }
@@ -228,7 +264,10 @@
     mol3D = null;
     modes3D = [];
     vibPlaying = false;
+    zpeKJ = 0;
     renderVibPanel();
+    renderEnergyHeader();
+    renderIRChart();
   }
 
   function cycleBond(b) {
@@ -276,6 +315,7 @@
     atoms = atoms.filter((a) => a.id !== id);
     if (selectedId === id) selectedId = null;
     rigidAtoms.delete(id);
+    rigidSlotOf.delete(id);
     invalidate3D();
   }
 
@@ -328,11 +368,17 @@
     bonds = [];
     selectedId = null;
     rigidAtoms.clear();
+    rigidSlotOf.clear();
     mol3D = null;
     modes3D = [];
     vibPlaying = false;
+    zpeKJ = 0;
+    view3D.rotX = -0.3;
+    view3D.rotY = 0.5;
     setStatus('畫布已清空,從左側加入原子開始新的組合。');
     renderVibPanel();
+    renderEnergyHeader();
+    renderIRChart();
     render();
   }
 
@@ -473,6 +519,7 @@
       comp.forEach((a) => {
         a.x = centerX + (a.x - cx) * scale;
         a.y = centerY + (a.y - cy) * scale;
+        rigidSlotOf.set(a.id, { cx: centerX, cy: centerY, scale: Math.min(slotW, STAGE_H) * 0.42 });
       });
     });
   }
@@ -559,8 +606,9 @@
   }
 
   function drawGeometryLabels(layer) {
-    // 鍵長標在鍵旁
+    // 鍵長標在鍵旁(已最佳化鎖定的分子改由 3D 那一批畫真實的 Å/度數,這裡跳過)
     bonds.forEach((b) => {
+      if (rigidAtoms.has(b.a) && rigidAtoms.has(b.b)) return;
       const a1 = atomById(b.a);
       const a2 = atomById(b.b);
       const d = Math.hypot(a2.x - a1.x, a2.y - a1.y) || 1;
@@ -578,6 +626,7 @@
     });
     // 鍵角弧線與度數
     geometryInfo().angles.forEach((ang) => {
+      if (rigidAtoms.has(ang.c.id)) return;
       const c = ang.c;
       const rr = ELEMENTS[c.el].r + 20;
       const p1x = c.x + rr * Math.cos(ang.start);
@@ -798,6 +847,11 @@
   let vibPlaying = false;
   let vibT0 = 0;
   let vibLoopRunning = false;
+  const view3D = { rotX: -0.3, rotY: 0.5 };
+  let rotating = null;
+  let zpeKJ = 0;
+  const KJ_PER_MDYN_A = 602.214; // 1 mdyn·Å = 6.022e23 * 1e-18 J /mol /1000 = 602.2 kJ/mol
+  const KJ_PER_CM1 = 0.0119627; // 1 cm⁻¹ = 11.96 J/mol
 
   function jacobiEigen(Ain, maxSweeps) {
     const n = Ain.length;
@@ -1123,7 +1177,19 @@
         const totalMotion = disp.reduce((s, d) => s + Math.hypot(d.x, d.y, d.z), 0);
         const stretchFrac = totalMotion > 0 ? bestStretch / (totalMotion / mol.bonds.length || 1) : 0;
         const type = stretchFrac > 0.6 ? '伸縮' : '彎曲';
-        return { freq, disp, type, bondLabel: bestBond };
+        // IR 強度的物理代理:這個模式的位移會不會改變分子偶極矩(dμ/dQ),
+        // 用電負度差當作簡化的部分電荷,量出偶極對這個位移方向的導數
+        let dmx = 0, dmy = 0, dmz = 0;
+        mol.bonds.forEach((b) => {
+          const i1 = mol.atoms.findIndex((a) => a.id === b.a);
+          const i2 = mol.atoms.findIndex((a) => a.id === b.b);
+          const dEN = ELEMENTS[mol.atoms[i2].el].en - ELEMENTS[mol.atoms[i1].el].en;
+          dmx += dEN * (disp[i2].x - disp[i1].x);
+          dmy += dEN * (disp[i2].y - disp[i1].y);
+          dmz += dEN * (disp[i2].z - disp[i1].z);
+        });
+        const intensity = Math.hypot(dmx, dmy, dmz);
+        return { freq, disp, type, bondLabel: bestBond, intensity };
       })
       .sort((a, b) => b.freq - a.freq);
   }
@@ -1132,12 +1198,26 @@
     mol3D = build3DGeometry();
     const allModes = computeNormalModes(mol3D);
     modes3D = importantModes(allModes);
+    zpeKJ = zeroPointEnergyKJ(allModes);
     selectedMode = 0;
     // 立刻自動播放第一個振動模式,不用等使用者按按鈕才看得到動畫
     vibPlaying = modes3D.length > 0;
     vibT0 = performance.now();
     renderVibPanel();
+    renderEnergyHeader();
     startVibLoop();
+  }
+
+  function renderEnergyHeader() {
+    const el2 = document.getElementById('energy-header');
+    if (!el2) return;
+    if (!mol3D) {
+      el2.textContent = '';
+      el2.style.display = 'none';
+      return;
+    }
+    el2.style.display = '';
+    el2.textContent = `⚡ 分子零點振動能(ZPE)≈ ${zpeKJ.toFixed(1)} kJ/mol —— 由所有真實振動模式 ½Σhcω 加總換算而來`;
   }
 
   // 只要 vibPlaying 是 true,就持續重繪主畫布做出振動動畫;停止時自然結束,不留下多餘的 rAF
@@ -1166,9 +1246,10 @@
       );
       if (g) {
         g.freq = (g.freq * g.count + m.freq) / (g.count + 1);
+        g.intensity += m.intensity;
         g.count++;
       } else {
-        groups.push({ freq: m.freq, type: m.type, bondLabel: m.bondLabel, count: 1, disp: m.disp });
+        groups.push({ freq: m.freq, type: m.type, bondLabel: m.bondLabel, count: 1, disp: m.disp, intensity: m.intensity });
       }
     });
     const floor = Math.max(150, groups[0].freq * 0.06);
@@ -1176,74 +1257,239 @@
     return (kept.length ? kept : [groups[0]]).sort((a, b) => b.freq - a.freq);
   }
 
+  // 零點振動能(ZPE)= ½Σhcω,換算成 kJ/mol —— 用「所有」模式(未合併簡併、未濾除雜訊),
+  // 這是這顆分子真正的振動能量,跟教科書的鍵能數量級可以互相參照
+  function zeroPointEnergyKJ(allModes) {
+    return 0.5 * allModes.reduce((s, m) => s + m.freq, 0) * KJ_PER_CM1;
+  }
+
   // 把 3D 模式的位移,依「沿著每個鍵在畫布上的實際方向」投影回 2D,
   // 這樣主畫布上的動畫看起來跟畫面上的鍵是一致的(伸縮沿著畫面上的鍵、同相/異相關係也保留)
-  function vib2DOffset(atomId, mode) {
-    if (!mode || !mol3D) return { x: 0, y: 0 };
-    const idx3 = mol3D.atoms.findIndex((a) => a.id === atomId);
-    if (idx3 < 0) return { x: 0, y: 0 };
-    let ox = 0, oy = 0;
+  // 簡單的旋轉投影:繞 X、Y 軸轉,z 留著做景深排序與縮放
+  function project3D(p) {
+    const cy = Math.cos(view3D.rotY), sy = Math.sin(view3D.rotY);
+    const cx = Math.cos(view3D.rotX), sx = Math.sin(view3D.rotX);
+    const x1 = p.x * cy + p.z * sy;
+    const z1 = -p.x * sy + p.z * cy;
+    const y1 = p.y * cx - z1 * sx;
+    const z2 = p.y * sx + z1 * cx;
+    return { x: x1, y: y1, z: z2 };
+  }
+
+  // 目前這一幀,mol3D 每個原子的座標(含振動位移,單位是 3D 模型自己的 Å 尺度)
+  function mol3DLivePositions() {
+    const mode = vibPlaying ? modes3D[selectedMode] : null;
+    let amp = 0;
+    if (mode) {
+      const t = (performance.now() - vibT0) / 220;
+      amp = 0.4 * Math.sin(t);
+    }
+    return mol3D.atoms.map((a, i) => ({
+      id: a.id,
+      el: a.el,
+      x: a.x + (mode ? mode.disp[i].x * amp : 0),
+      y: a.y + (mode ? mode.disp[i].y * amp : 0),
+      z: a.z + (mode ? mode.disp[i].z * amp : 0),
+    }));
+  }
+
+  // 把最佳化完成的分子畫成可拖曳旋轉的真實立體球棍圖,直接疊在主畫布上
+  // (拖曳畫布空白處會旋轉視角);鍵長/鍵角標示用真正的 3D 數值(Å、度),
+  // 不是攤平 2D 示意圖才會出現的 90° 假象
+  function drawRigid3D(layer) {
+    if (!mol3D) return;
+    const slot = rigidSlotOf.get(mol3D.atoms[0]?.id) || { cx: STAGE_W / 2, cy: STAGE_H / 2, scale: 130 };
+    let maxR = 1;
+    mol3D.atoms.forEach((a) => { maxR = Math.max(maxR, Math.hypot(a.x, a.y, a.z) + 0.35); });
+    const scale = slot.scale / maxR;
+    const live = mol3DLivePositions();
+    const positions = live.map((a) => ({ ...a, proj: project3D(a) }));
+    const byId = new Map(positions.map((p) => [p.id, p]));
+
+    const items = [];
     mol3D.bonds.forEach((b) => {
-      if (b.a !== atomId && b.b !== atomId) return;
-      const otherId = b.a === atomId ? b.b : b.a;
-      const idxOther = mol3D.atoms.findIndex((a) => a.id === otherId);
-      if (idxOther < 0) return;
-      const a3 = mol3D.atoms[idx3], o3 = mol3D.atoms[idxOther];
-      const bn = norm3(a3.x - o3.x, a3.y - o3.y, a3.z - o3.z);
-      const dDisp = {
-        x: mode.disp[idx3].x - mode.disp[idxOther].x,
-        y: mode.disp[idx3].y - mode.disp[idxOther].y,
-        z: mode.disp[idx3].z - mode.disp[idxOther].z,
-      };
-      const rate = dDisp.x * bn.x + dDisp.y * bn.y + dDisp.z * bn.z; // >0:遠離該鍵夥伴
-      const a2 = atomById(atomId), o2 = atomById(otherId);
-      if (!a2 || !o2) return;
-      const d2x = a2.x - o2.x, d2y = a2.y - o2.y;
-      const len2 = Math.hypot(d2x, d2y) || 1;
-      ox += (d2x / len2) * rate;
-      oy += (d2y / len2) * rate;
+      const p1 = byId.get(b.a), p2 = byId.get(b.b);
+      if (!p1 || !p2) return;
+      items.push({ kind: 'bond', b, p1, p2, z: (p1.proj.z + p2.proj.z) / 2 });
     });
-    return { x: ox, y: oy };
+    positions.forEach((p) => items.push({ kind: 'atom', p, z: p.proj.z }));
+    items.sort((x, y) => x.z - y.z);
+
+    items.forEach((item) => {
+      if (item.kind === 'bond') {
+        const { p1, p2, b } = item;
+        const x1 = slot.cx + p1.proj.x * scale, y1 = slot.cy - p1.proj.y * scale;
+        const x2 = slot.cx + p2.proj.x * scale, y2 = slot.cy - p2.proj.y * scale;
+        const dx = x2 - x1, dy = y2 - y1;
+        const len = Math.hypot(dx, dy) || 1;
+        const px = -dy / len, py = dx / len;
+        for (let i = 0; i < b.order; i++) {
+          const off = (i - (b.order - 1) / 2) * 6;
+          layer.appendChild(
+            el('line', { x1: x1 + px * off, y1: y1 + py * off, x2: x2 + px * off, y2: y2 + py * off, stroke: '#8a8f9c', 'stroke-width': 3.2 })
+          );
+        }
+      } else {
+        const a = item.p;
+        const info = ELEMENTS[a.el];
+        const depthScale = 1 + a.proj.z * (0.9 / maxR) * 0.15;
+        const r = info.r * 0.62 * depthScale;
+        const x = slot.cx + a.proj.x * scale, y = slot.cy - a.proj.y * scale;
+        layer.appendChild(el('circle', { cx: x, cy: y, r, fill: info.color, stroke: '#555', 'stroke-width': 1.3 }));
+        const t = el('text', { x, y, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': r * 0.85, 'font-weight': 700, fill: '#222' });
+        t.textContent = a.el;
+        layer.appendChild(t);
+      }
+    });
+
+    // 真實鍵長(Å)標示(用未加振動位移的基準座標,避免文字跟著抖動)
+    const basePos = mol3D.atoms.map((a) => ({ ...a, proj: project3D(a) }));
+    const baseById = new Map(basePos.map((p) => [p.id, p]));
+    mol3D.bonds.forEach((b) => {
+      const p1 = baseById.get(b.a), p2 = baseById.get(b.b);
+      if (!p1 || !p2) return;
+      const len = Math.hypot(p1.x - p2.x, p1.y - p2.y, p1.z - p2.z);
+      const x1 = slot.cx + p1.proj.x * scale, y1 = slot.cy - p1.proj.y * scale;
+      const x2 = slot.cx + p2.proj.x * scale, y2 = slot.cy - p2.proj.y * scale;
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      const dx = x2 - x1, dy = y2 - y1;
+      const dlen = Math.hypot(dx, dy) || 1;
+      const t = el('text', {
+        x: mx - (dy / dlen) * 12,
+        y: my + (dx / dlen) * 12,
+        'text-anchor': 'middle',
+        'font-size': 10.5,
+        fill: '#8a93a8',
+      });
+      t.textContent = `${len.toFixed(2)} Å`;
+      layer.appendChild(t);
+    });
+    // 真實鍵角(°)標示
+    const nbIds = new Map();
+    mol3D.atoms.forEach((a) => nbIds.set(a.id, []));
+    mol3D.bonds.forEach((b) => {
+      nbIds.get(b.a).push(b.b);
+      nbIds.get(b.b).push(b.a);
+    });
+    mol3D.atoms.forEach((c) => {
+      const nb = nbIds.get(c.id);
+      if (nb.length < 2) return;
+      // 2 個鍵夥伴:顯示那唯一的夾角;3 個以上(通常對稱,如 CH4/NH3):取所有兩兩夾角平均,標一個代表值
+      let sum = 0, count = 0;
+      for (let i = 0; i < nb.length; i++) {
+        for (let j = i + 1; j < nb.length; j++) {
+          const p1 = mol3D.atoms.find((a) => a.id === nb[i]);
+          const p2 = mol3D.atoms.find((a) => a.id === nb[j]);
+          const v1 = norm3(p1.x - c.x, p1.y - c.y, p1.z - c.z);
+          const v2 = norm3(p2.x - c.x, p2.y - c.y, p2.z - c.z);
+          const cosT = Math.max(-1, Math.min(1, v1.x * v2.x + v1.y * v2.y + v1.z * v2.z));
+          sum += (Math.acos(cosT) * 180) / Math.PI;
+          count++;
+        }
+      }
+      const deg = sum / count;
+      const cProj = baseById.get(c.id).proj;
+      const cx2 = slot.cx + cProj.x * scale, cy2 = slot.cy - cProj.y * scale;
+      const t = el('text', { x: cx2, y: cy2 - 16, 'text-anchor': 'middle', 'font-size': 10.5, 'font-weight': 700, fill: '#4c6ef5' });
+      t.textContent = nb.length === 2 ? `${deg.toFixed(1)}°` : `≈${deg.toFixed(1)}°(平均)`;
+      layer.appendChild(t);
+    });
+
+    const hint = el('text', { x: slot.cx, y: slot.cy + slot.scale + 26, 'text-anchor': 'middle', 'font-size': 11, fill: '#98a1b3' });
+    hint.textContent = '拖曳可旋轉立體結構';
+    layer.appendChild(hint);
   }
 
-  // 目前這一幀,每個原子在主畫布上應該多加的振動位移(px)
-  function currentVibOffsets() {
-    const offsets = new Map();
-    if (!vibPlaying || !mol3D || !modes3D[selectedMode]) return offsets;
-    const mode = modes3D[selectedMode];
-    const t = (performance.now() - vibT0) / 220;
-    const amp = 22 * Math.sin(t);
-    atoms.forEach((a) => {
-      if (!rigidAtoms.has(a.id)) return;
-      const off = vib2DOffset(a.id, mode);
-      offsets.set(a.id, { dx: off.x * amp, dy: off.y * amp });
-    });
-    return offsets;
+  function planckLewis(w, T) {
+    const x = (1.4388 * w) / T;
+    return (w * w * w) / (Math.expm1(x) || 1e-12);
   }
 
-  function drawMiniSpectrum(freq) {
-    const svg = document.getElementById('svg-vib-axis');
+  function renderIRChart() {
+    const svg = document.getElementById('svg-lewis-ir');
     if (!svg) return;
     svg.innerHTML = '';
-    const xHi = 4000, xLo = 400, Lm = 12, Rm = 12, W = 280;
-    const xPx = (w) => Lm + ((xHi - w) / (xHi - xLo)) * (W - Lm - Rm);
+    if (!mol3D || modes3D.length === 0) return;
+    const xHi = 4000, xLo = 400;
+    const L = 56, Rm = 16, T = 30, Bm = 34, W = 720, Hh = 210;
+    const xPx = (w) => L + ((xHi - w) / (xHi - xLo)) * (W - L - Rm);
+    const yPx = (pct) => T + ((100 - pct) / 100) * (Hh - T - Bm);
     const g = el('g', {});
-    g.appendChild(el('line', { x1: Lm, y1: 26, x2: W - Rm, y2: 26, stroke: '#99a1b3', 'stroke-width': 2 }));
+
+    g.appendChild(el('line', { x1: L, y1: T, x2: L, y2: Hh - Bm, stroke: '#99a1b3', 'stroke-width': 1 }));
+    g.appendChild(el('line', { x1: L, y1: Hh - Bm, x2: W - Rm, y2: Hh - Bm, stroke: '#99a1b3', 'stroke-width': 1 }));
     [4000, 3000, 2000, 1000, 400].forEach((w) => {
       const x = xPx(w);
-      g.appendChild(el('line', { x1: x, y1: 22, x2: x, y2: 30, stroke: '#99a1b3', 'stroke-width': 1 }));
-      const t = el('text', { x, y: 42, 'text-anchor': 'middle', 'font-size': 9.5, fill: '#667085' });
+      g.appendChild(el('line', { x1: x, y1: Hh - Bm, x2: x, y2: Hh - Bm + 4, stroke: '#99a1b3', 'stroke-width': 1 }));
+      const t = el('text', { x, y: Hh - Bm + 15, 'text-anchor': 'middle', 'font-size': 10, fill: '#667085' });
       t.textContent = w;
       g.appendChild(t);
     });
-    if (freq > 0) {
-      const x = xPx(Math.max(xLo, Math.min(xHi, freq)));
-      g.appendChild(el('circle', { cx: x, cy: 26, r: 6, fill: '#e8940a' }));
-      g.appendChild(el('line', { x1: x, y1: 6, x2: x, y2: 20, stroke: '#e8940a', 'stroke-width': 2 }));
-      const t = el('text', { x, y: 4, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700, fill: '#e8940a' });
-      t.textContent = `${freq.toFixed(0)} cm⁻¹`;
+    const xl = el('text', { x: (L + W - Rm) / 2, y: Hh - 4, 'text-anchor': 'middle', 'font-size': 10.5, fill: '#667085' });
+    xl.textContent = '波數(cm⁻¹)';
+    g.appendChild(xl);
+    [0, 50, 100].forEach((pct) => {
+      const y = yPx(pct);
+      g.appendChild(el('line', { x1: L - 4, y1: y, x2: L, y2: y, stroke: '#99a1b3', 'stroke-width': 1 }));
+      const t = el('text', { x: L - 7, y: y + 3.5, 'text-anchor': 'end', 'font-size': 10, fill: '#667085' });
+      t.textContent = pct;
       g.appendChild(t);
+    });
+
+    // 疊上地球熱輻射(288K)與太陽輻射尾端(5778K)黑體曲線(各自歸一化,示意)
+    const y0 = yPx(0);
+    let earthMax = 0;
+    for (let w = xLo; w <= xHi; w += 10) earthMax = Math.max(earthMax, planckLewis(w, 288));
+    const earthH = (Hh - T - Bm) * 0.55;
+    let dEarth = `M${xPx(xHi).toFixed(1)},${y0.toFixed(1)} `;
+    for (let w = xHi; w >= xLo; w -= 10) dEarth += `L${xPx(w).toFixed(1)},${(y0 - (planckLewis(w, 288) / earthMax) * earthH).toFixed(1)} `;
+    dEarth += `L${xPx(xLo).toFixed(1)},${y0.toFixed(1)} Z`;
+    g.appendChild(el('path', { d: dEarth, fill: 'rgba(232,148,10,.16)', stroke: '#e8940a', 'stroke-width': 1.2 }));
+    const sunRef = planckLewis(xHi, 5778);
+    const sunH = (Hh - T - Bm) * 0.3;
+    let dSun = `M${xPx(xHi).toFixed(1)},${y0.toFixed(1)} `;
+    for (let w = xHi; w >= xLo; w -= 10) dSun += `L${xPx(w).toFixed(1)},${(y0 - (planckLewis(w, 5778) / sunRef) * sunH).toFixed(1)} `;
+    dSun += `L${xPx(xLo).toFixed(1)},${y0.toFixed(1)} Z`;
+    g.appendChild(el('path', { d: dSun, fill: 'rgba(250,204,21,.15)', stroke: '#d4a90a', 'stroke-width': 1, 'stroke-dasharray': '4,3' }));
+    const legE = el('text', { x: L + 6, y: T + 10, 'font-size': 10, 'font-weight': 700, fill: '#e8940a' });
+    legE.textContent = '━ 地球熱輻射(288K)';
+    g.appendChild(legE);
+    const legS = el('text', { x: L + 6, y: T + 22, 'font-size': 10, fill: '#b8930a' });
+    legS.textContent = '┅ 太陽輻射尾端(5778K)';
+    g.appendChild(legS);
+
+    // 這顆分子的 IR 吸收峰(Lorentzian),強度來自 dμ/dQ(偶極對這個模式的變化率)
+    const maxI = Math.max(...modes3D.map((m) => m.intensity), 1e-9);
+    const gamma = 40;
+    let d = '';
+    for (let w = xHi; w >= xLo; w -= 6) {
+      let pct = 100;
+      modes3D.forEach((m) => {
+        const inten = m.intensity / maxI;
+        const z = (w - m.freq) / gamma;
+        pct -= inten * 88 * (1 / (1 + z * z));
+      });
+      d += (d ? 'L' : 'M') + xPx(w).toFixed(1) + ',' + yPx(Math.max(pct, 2)).toFixed(1) + ' ';
     }
+    g.appendChild(el('path', { d, fill: 'none', stroke: '#1f2430', 'stroke-width': 2 }));
+
+    modes3D.forEach((m, i) => {
+      const px = xPx(m.freq);
+      const inten = m.intensity / maxI;
+      if (inten < 0.04) return; // 幾乎不吸收就不特別標
+      const py = yPx(100 - inten * 88);
+      const t = el('text', { x: px, y: py - 8, 'text-anchor': 'middle', 'font-size': 9.5, fill: i === selectedMode ? '#3b5bdb' : '#667085', 'font-weight': i === selectedMode ? 700 : 400 });
+      t.textContent = m.freq.toFixed(0);
+      g.appendChild(t);
+    });
+    // 選取模式標記
+    const sel = modes3D[selectedMode];
+    if (sel) {
+      const spx = xPx(sel.freq);
+      g.appendChild(el('line', { x1: spx, y1: T, x2: spx, y2: Hh - Bm, stroke: '#3b5bdb', 'stroke-width': 1.5, 'stroke-dasharray': '5,4' }));
+    }
+
+    svg.setAttribute('viewBox', `0 0 ${W} ${Hh}`);
     svg.appendChild(g);
   }
 
@@ -1253,26 +1499,27 @@
     if (!wrap) return;
     wrap.innerHTML = '';
     if (!mol3D || modes3D.length === 0) {
-      wrap.innerHTML = '<p class="tiny">按「⚛ 鍵長最佳化」後,這裡會列出這顆分子真正算出來的重要振動模式(依真實原子質量與鍵力常數,對位能面做 Hessian 對角化;簡併模式與雜訊模式已自動省略),動畫會直接顯示在左邊的分子上。</p>';
+      wrap.innerHTML = '<p class="tiny">按「⚛ 鍵長最佳化」後,這裡會列出這顆分子真正算出來的重要振動模式(依真實原子質量與鍵力常數,對位能面做 Hessian 對角化;簡併模式與雜訊模式已自動省略),動畫會直接顯示在左邊的分子上,下面也會畫出這顆分子的 IR 光譜。</p>';
       if (axisWrap) axisWrap.style.display = 'none';
+      renderIRChart();
       return;
     }
     if (axisWrap) axisWrap.style.display = '';
     modes3D.forEach((m, i) => {
       const btn = document.createElement('button');
       btn.className = 'orb-btn vib-btn' + (i === selectedMode ? ' active' : '');
-      btn.textContent = `${m.bondLabel || ''} ${m.type} ${m.freq.toFixed(0)} cm⁻¹${m.count > 1 ? `(${m.count}重簡併)` : ''}`;
+      const ir = m.intensity >= 0.04 * Math.max(...modes3D.map((mm) => mm.intensity), 1e-9) ? '✔IR' : '✘IR';
+      btn.textContent = `${m.bondLabel || ''} ${m.type} ${m.freq.toFixed(0)} cm⁻¹${m.count > 1 ? `(${m.count}重簡併)` : ''} ${ir}`;
       btn.addEventListener('click', () => {
         selectedMode = i;
         vibPlaying = true;
         vibT0 = performance.now();
         renderVibPanel();
-        drawMiniSpectrum(m.freq);
         startVibLoop();
       });
       wrap.appendChild(btn);
     });
-    drawMiniSpectrum(modes3D[selectedMode].freq);
+    renderIRChart();
   }
 
   function components() {
@@ -1351,9 +1598,12 @@
     });
     chipsEl.innerHTML = '';
     TARGETS.forEach((t) => {
-      const chip = document.createElement('span');
+      const chip = document.createElement('button');
+      chip.type = 'button';
       chip.className = 'chip' + (doneTargets.has(t.key) ? ' done' : '');
+      chip.title = '點一下直接生成這個分子並自動最佳化';
       chip.textContent = (doneTargets.has(t.key) ? '✓ ' : '') + t.label;
+      chip.addEventListener('click', () => buildPresetMolecule(t.key));
       chipsEl.appendChild(chip);
     });
 
@@ -1411,21 +1661,58 @@
     // 幾何面板:鍵長與鍵角
     const geomEl = document.getElementById('geom-panel');
     if (geomEl) {
-      const { bondsInfo, angles } = geometryInfo();
-      if (bondsInfo.length === 0) {
-        geomEl.innerHTML =
-          '<h4>目前的幾何:鍵長與鍵角</h4><p class="tiny">接出鍵之後,這裡與畫布上會即時顯示鍵長(相對單位)與鍵角;按「⚛ 鍵長最佳化」讓它們收斂到平衡值。</p>';
-      } else {
-        const bl = bondsInfo
-          .map((b) => `${b.label}:${b.len.toFixed(0)}(平衡 ${b.r0.toFixed(0)})`)
+      if (mol3D) {
+        const bl3 = mol3D.bonds
+          .map((b) => {
+            const a1 = mol3D.atoms.find((a) => a.id === b.a);
+            const a2 = mol3D.atoms.find((a) => a.id === b.b);
+            const sym = b.order === 1 ? '−' : b.order === 2 ? '=' : '≡';
+            const len = Math.hypot(a1.x - a2.x, a1.y - a2.y, a1.z - a2.z);
+            return `${a1.el}${sym}${a2.el}:${len.toFixed(2)} Å`;
+          })
           .join('<br>');
-        const al = angles.length
-          ? angles.map((a2) => `${a2.label}:${a2.deg.toFixed(1)}°`).join('<br>')
-          : '(尚無鍵角:需要一個原子接兩個以上的鍵)';
+        const nbIds = new Map();
+        mol3D.atoms.forEach((a) => nbIds.set(a.id, []));
+        mol3D.bonds.forEach((b) => { nbIds.get(b.a).push(b.b); nbIds.get(b.b).push(b.a); });
+        const al3 = [];
+        mol3D.atoms.forEach((c) => {
+          const nb = nbIds.get(c.id);
+          if (nb.length < 2) return;
+          let sum = 0, count = 0;
+          for (let i = 0; i < nb.length; i++) {
+            for (let j = i + 1; j < nb.length; j++) {
+              const p1 = mol3D.atoms.find((a) => a.id === nb[i]);
+              const p2 = mol3D.atoms.find((a) => a.id === nb[j]);
+              const v1 = norm3(p1.x - c.x, p1.y - c.y, p1.z - c.z);
+              const v2 = norm3(p2.x - c.x, p2.y - c.y, p2.z - c.z);
+              const cosT = Math.max(-1, Math.min(1, v1.x * v2.x + v1.y * v2.y + v1.z * v2.z));
+              sum += (Math.acos(cosT) * 180) / Math.PI;
+              count++;
+            }
+          }
+          al3.push(`以 ${c.el} 為中心:${(sum / count).toFixed(1)}°${nb.length > 2 ? '(平均)' : ''}`);
+        });
         geomEl.innerHTML =
-          `<h4>目前的幾何:鍵長與鍵角</h4>` +
-          `<p class="tiny"><b>鍵長</b>(相對單位,括號為平衡值;鍵級越高越短)<br>${bl}</p>` +
-          `<p class="tiny"><b>鍵角</b>(畫布是攤平的 2D 示意圖,例如四面體在這裡只會看到 90°;真正的立體角度請看下面的「🧊 立體結構」)<br>${al}</p>`;
+          `<h4>真實立體幾何(3D)</h4>` +
+          `<p class="tiny"><b>鍵長</b>(真實鍵長,Å)<br>${bl3}</p>` +
+          `<p class="tiny"><b>鍵角</b>(真實立體角度,拖曳畫布可旋轉觀察)<br>${al3.join('<br>') || '(無)'}</p>`;
+      } else {
+        const { bondsInfo, angles } = geometryInfo();
+        if (bondsInfo.length === 0) {
+          geomEl.innerHTML =
+            '<h4>目前的幾何:鍵長與鍵角</h4><p class="tiny">接出鍵之後,這裡與畫布上會即時顯示鍵長(相對單位)與鍵角;按「⚛ 鍵長最佳化」讓它們收斂到平衡值,並換算成真實的 Å 與立體角度。</p>';
+        } else {
+          const bl = bondsInfo
+            .map((b) => `${b.label}:${b.len.toFixed(0)}(平衡 ${b.r0.toFixed(0)})`)
+            .join('<br>');
+          const al = angles.length
+            ? angles.map((a2) => `${a2.label}:${a2.deg.toFixed(1)}°`).join('<br>')
+            : '(尚無鍵角:需要一個原子接兩個以上的鍵)';
+          geomEl.innerHTML =
+            `<h4>目前的幾何:鍵長與鍵角</h4>` +
+            `<p class="tiny"><b>鍵長</b>(相對單位,括號為平衡值;鍵級越高越短)<br>${bl}</p>` +
+            `<p class="tiny"><b>鍵角</b>(攤平的 2D 示意圖,只是暫時的建構畫面)<br>${al}</p>`;
+        }
       }
     }
 
@@ -1461,25 +1748,21 @@
   }
 
   function render() {
-    // 振動動畫:暫時把鎖定原子的顯示位置加上振動位移,畫完再還原,
-    // 這樣真正儲存的座標(a.x/a.y)完全不變,分子還是鎖定不動的
-    const vibOffsets = currentVibOffsets();
-    vibOffsets.forEach((off, id) => {
-      const a = atomById(id);
-      if (a) { a.x += off.dx; a.y += off.dy; }
-    });
-
     stage.innerHTML = '';
     const bondLayer = el('g', {});
     const atomLayer = el('g', {});
+    const rigidLayer = el('g', {});
     stage.appendChild(bondLayer);
     stage.appendChild(atomLayer);
+    stage.appendChild(rigidLayer);
 
     drawTrash(bondLayer);
     if (cloudOn) drawCloud(bondLayer);
     drawGeometryLabels(bondLayer);
+    drawRigid3D(rigidLayer);
 
     bonds.forEach((b) => {
+      if (rigidAtoms.has(b.a) && rigidAtoms.has(b.b)) return; // 已最佳化的鍵改由 3D 那一批畫
       const a1 = atomById(b.a);
       const a2 = atomById(b.b);
       bondLayer.appendChild(
@@ -1524,6 +1807,7 @@
     });
 
     atoms.forEach((a) => {
+      if (rigidAtoms.has(a.id)) return; // 已最佳化的原子改由 3D 那一批畫
       const info = ELEMENTS[a.el];
       const d = derived(a);
       const g = el('g', { class: 'atom-group', 'data-id': a.id });
@@ -1587,11 +1871,6 @@
         e.preventDefault();
       });
       atomLayer.appendChild(g);
-    });
-
-    vibOffsets.forEach((off, id) => {
-      const a = atomById(id);
-      if (a) { a.x -= off.dx; a.y -= off.dy; }
     });
 
     updatePanels();
@@ -1662,12 +1941,23 @@
     });
 
     stage.addEventListener('pointerdown', (e) => {
+      if (mol3D) {
+        rotating = { sx: e.clientX, sy: e.clientY, rx: view3D.rotX, ry: view3D.rotY };
+        e.preventDefault();
+        return;
+      }
       if (e.target === stage) {
         selectedId = null;
         render();
       }
     });
     document.addEventListener('pointermove', (e) => {
+      if (rotating) {
+        view3D.rotY = rotating.ry + (e.clientX - rotating.sx) * 0.012;
+        view3D.rotX = Math.max(-1.4, Math.min(1.4, rotating.rx + (e.clientY - rotating.sy) * 0.012));
+        render();
+        return;
+      }
       // 從原子盒拖出:移動超過門檻才在指標位置生成原子
       if (paletteDrag && !paletteDrag.spawned) {
         if (Math.hypot(e.clientX - paletteDrag.sx, e.clientY - paletteDrag.sy) < 8) return;
@@ -1709,6 +1999,10 @@
       render();
     });
     const endDrag = () => {
+      if (rotating) {
+        rotating = null;
+        return;
+      }
       if (paletteDrag) {
         if (!paletteDrag.spawned) addAtom(paletteDrag.key);
         paletteDrag = null;
@@ -1736,8 +2030,10 @@
       atoms: () => atoms.map((a) => ({ ...a, ...derived(a) })),
       bonds: () => bonds.map((b) => ({ ...b })),
       isRigid: (id) => rigidAtoms.has(id),
-      modes: () => modes3D.map((m) => ({ freq: m.freq, type: m.type, bondLabel: m.bondLabel })),
+      modes: () => modes3D.map((m) => ({ freq: m.freq, type: m.type, bondLabel: m.bondLabel, intensity: m.intensity, count: m.count })),
       mol3D: () => mol3D,
+      zpeKJ: () => zpeKJ,
+      buildPreset: (key) => buildPresetMolecule(key),
     };
 
     renderVibPanel();

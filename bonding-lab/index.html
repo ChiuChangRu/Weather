@@ -4,14 +4,14 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>化學鍵結互動教學 — 共價鍵形成 與 LCAO 分子軌域理論</title>
-<link rel="stylesheet" href="style.css?v=11" />
+<link rel="stylesheet" href="style.css?v=13" />
 </head>
 <body>
 
 <header class="app-header">
   <div class="header-row">
     <figure class="pauling-fig">
-      <img src="pauling.png?v=11" alt="Linus Pauling" class="pauling-img"
+      <img src="pauling.png?v=13" alt="Linus Pauling" class="pauling-img"
            onerror="if(!this.dataset.f){this.dataset.f=1;this.src='https://commons.wikimedia.org/wiki/Special:FilePath/Linus%20Pauling%201962.jpg?width=300';}else{this.onerror=null;this.src='pauling.svg';}" />
       <figcaption>Linus Pauling<br>《化學鍵的本質》</figcaption>
     </figure>
@@ -37,6 +37,7 @@
       </aside>
 
       <div class="lewis-center">
+        <p id="energy-header" class="energy-header" style="display:none"></p>
         <div class="target-chips" id="target-chips"></div>
         <div class="canvas-tools">
           <button id="btn-optimize" class="tool-btn"
@@ -51,19 +52,23 @@
         <svg id="lewis-stage" viewBox="0 0 760 520" preserveAspectRatio="xMidYMid meet"></svg>
         <p id="lewis-status" class="status-line">先從左側把原子拖進畫布吧！</p>
         <div id="component-readout" class="readout"></div>
+
+        <div class="info-card vib-inline">
+          <h4>🎵 振動模式（點一下,直接在上面的分子上播放）</h4>
+          <div class="orbital-buttons" id="vib-mode-list"></div>
+          <div id="vib-axis-wrap" style="display:none;margin-top:6px">
+            <svg id="svg-lewis-ir" viewBox="0 0 720 210" style="width:100%;height:auto"></svg>
+            <p class="tiny">
+              黑線＝這顆分子的 IR 吸收光譜(強度來自模式改變偶極矩的程度);橙色/黃色區塊＝地球熱輻射與太陽輻射,疊在一起才看得出哪個振動模式真正擋得住地球散熱。
+              只列出有代表性的模式,簡併(對稱重複)已合併,雜訊般的低頻模式已省略。
+            </p>
+          </div>
+        </div>
       </div>
 
       <aside class="info-panel">
         <div class="info-card" id="selected-panel"></div>
         <div class="info-card" id="geom-panel"></div>
-        <div class="info-card">
-          <h4>🎵 振動模式（點一下,直接在左邊分子上播放）</h4>
-          <div class="orbital-buttons" id="vib-mode-list"></div>
-          <div id="vib-axis-wrap" style="display:none;margin-top:6px">
-            <svg id="svg-vib-axis" viewBox="0 0 280 46" style="width:100%;height:auto"></svg>
-            <p class="tiny">橙點＝這個振動模式在紅外光譜上的波數位置（cm⁻¹）。只列出有代表性的模式,簡併(對稱重複)的已合併,雜訊般的低頻模式已省略。</p>
-          </div>
-        </div>
         <div class="info-card">
           <h4>價電子・可成鍵數・電負度</h4>
           <table class="ref">
@@ -233,8 +238,8 @@
   <p>多數圖示為教學用簡化示意；「H₂ Hartree–Fock」面板為真實的從頭計算（RHF／STO-3G）。</p>
 </footer>
 
-<script src="main.js?v=11"></script>
-<script src="lewis.js?v=11"></script>
-<script src="lcao.js?v=11"></script>
+<script src="main.js?v=13"></script>
+<script src="lewis.js?v=13"></script>
+<script src="lcao.js?v=13"></script>
 </body>
 </html>
