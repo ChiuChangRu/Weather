@@ -140,6 +140,20 @@ main { max-width: 1000px; margin: 0 auto; padding: 20px; }
 }
 
 .target-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+
+.canvas-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.tool-btn {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 0.84rem;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.tool-btn:hover { border-color: var(--accent); color: var(--accent); }
+.tool-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tool-btn:disabled { opacity: 0.55; cursor: wait; }
 .chip {
   font-size: 0.76rem;
   border: 1px solid var(--border);

@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>化學鍵結互動教學 — 共價鍵形成 與 LCAO 分子軌域理論</title>
-<link rel="stylesheet" href="style.css?v=3" />
+<link rel="stylesheet" href="style.css?v=4" />
 </head>
 <body>
 
@@ -36,6 +36,16 @@
 
       <div class="lewis-center">
         <div class="target-chips" id="target-chips"></div>
+        <div class="canvas-tools">
+          <button id="btn-optimize" class="tool-btn"
+            title="簡化版的量子化學幾何優化(概念上類似 Hartree–Fock):把鍵長調到能量最低的平衡距離,鍵角依電子對互斥(VSEPR)展開,並顯示能量下降的過程">
+            ⚛ 鍵長最佳化（簡易計算）
+          </button>
+          <button id="btn-cloud" class="tool-btn"
+            title="以半透明點狀(網狀)分布顯示價電子雲,虛線圈約為 90% 機率邊界;鍵上的雲較密,代表共用電子">
+            ☁ 電子雲（90%）
+          </button>
+        </div>
         <svg id="lewis-stage" viewBox="0 0 760 520" preserveAspectRatio="xMidYMid meet"></svg>
         <p class="legend">
           單獨黑點＝未配對電子（可成鍵）　黑點成對＝孤對電子　黃底電子對＝共用電子對（共價鍵）
@@ -138,8 +148,8 @@
   <p>教學用簡化示意圖，非精確量子力學計算結果。</p>
 </footer>
 
-<script src="main.js?v=3"></script>
-<script src="lewis.js?v=3"></script>
-<script src="lcao.js?v=3"></script>
+<script src="main.js?v=4"></script>
+<script src="lewis.js?v=4"></script>
+<script src="lcao.js?v=4"></script>
 </body>
 </html>
