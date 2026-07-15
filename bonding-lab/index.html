@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>化學鍵結互動教學 — 共價鍵形成 與 LCAO 分子軌域理論</title>
-<link rel="stylesheet" href="style.css?v=4" />
+<link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
 
@@ -21,7 +21,7 @@
 <main>
   <section id="tab-lewis" class="tab-panel active">
     <p class="panel-intro">
-      從左側「原子盒」點一下原子加入畫布。每個原子都畫出它的價電子：成對的是<b>孤對電子</b>、單獨的是<b>未配對電子</b>（可以成鍵）。
+      從左側「原子盒」把原子<b>拖進畫布</b>（點一下也會自動放入）。每個原子都畫出它的價電子：成對的是<b>孤對電子</b>、單獨的是<b>未配對電子</b>（可以成鍵）。
       拖曳兩個原子靠近，未配對電子會互相配對成<b>共用電子對</b>（黃底）形成共價鍵；點一下鍵可升級為雙鍵／三鍵（兩端都要還有未配對電子）。
       點選原子可查看<b>形式電荷</b>的計算，並可增減電子做出離子；不要的原子拖到右下角<b>垃圾桶</b>即可刪除。
       下方的<b>能量條</b>會告訴你目前的結構穩不穩定 —— 只有能量低的穩定結構才會存在！試著完成上方的目標分子！
@@ -141,15 +141,28 @@
       <svg id="svg-curve" viewBox="0 0 900 180"></svg>
       <p id="curve-text" class="status-line"></p>
     </div>
+
+    <div class="panel-box full-width">
+      <h3>真實量子計算：H₂ 的 Hartree–Fock 能量曲線（STO-3G 基底）</h3>
+      <p class="tiny" style="text-align:center">
+        這不是示意圖，是貨真價實的從頭計算（ab initio）：程式即時計算高斯基底函數的重疊、動能、
+        核吸引與電子互斥積分，組出 Hartree–Fock 能量，掃描不同核間距 R 找出能量最低的平衡鍵長。
+      </p>
+      <div class="canvas-tools" style="justify-content:center">
+        <button id="btn-hf" class="tool-btn">▶ 執行 H₂ Hartree–Fock 計算</button>
+      </div>
+      <svg id="svg-hf" viewBox="0 0 900 240"></svg>
+      <p id="hf-text" class="status-line">按下按鈕開始掃描。</p>
+    </div>
   </section>
 </main>
 
 <footer class="app-footer">
-  <p>教學用簡化示意圖，非精確量子力學計算結果。</p>
+  <p>多數圖示為教學用簡化示意；「H₂ Hartree–Fock」面板為真實的從頭計算（RHF／STO-3G）。</p>
 </footer>
 
-<script src="main.js?v=4"></script>
-<script src="lewis.js?v=4"></script>
-<script src="lcao.js?v=4"></script>
+<script src="main.js?v=5"></script>
+<script src="lewis.js?v=5"></script>
+<script src="lcao.js?v=5"></script>
 </body>
 </html>
