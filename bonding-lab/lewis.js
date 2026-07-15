@@ -453,6 +453,30 @@
     return E;
   }
 
+  // 最佳化完成後:把每個分子移到畫布中央,並縮放到適合視窗的大小
+  // (多個分子並存時左右並排,避免互相重疊)
+  function centerAndFitMolecules() {
+    const comps = components().filter((c) => c.length >= 2);
+    if (comps.length === 0) return;
+    const slotW = STAGE_W / comps.length;
+    comps.forEach((comp, idx) => {
+      const cx = comp.reduce((s, a) => s + a.x, 0) / comp.length;
+      const cy = comp.reduce((s, a) => s + a.y, 0) / comp.length;
+      let maxR = 1;
+      comp.forEach((a) => {
+        maxR = Math.max(maxR, Math.hypot(a.x - cx, a.y - cy) + ELEMENTS[a.el].r);
+      });
+      const targetR = Math.min(slotW, STAGE_H) * 0.34;
+      const scale = targetR / maxR;
+      const centerX = slotW * (idx + 0.5);
+      const centerY = STAGE_H / 2;
+      comp.forEach((a) => {
+        a.x = centerX + (a.x - cx) * scale;
+        a.y = centerY + (a.y - cy) * scale;
+      });
+    });
+  }
+
   function runOptimize() {
     if (optimizing) return;
     if (bonds.length === 0) {
@@ -478,9 +502,10 @@
           rigidAtoms.add(b.a);
           rigidAtoms.add(b.b);
         });
+        centerAndFitMolecules();
         setStatus(
           `最佳化完成!E:${E0.toFixed(2)} → ${E.toFixed(2)}。鍵長已落在能量最低的平衡距離(鍵級越高鍵越短),鍵角由電子對互斥(VSEPR)決定。` +
-            `這顆分子現在鎖定成剛體 —— 只能整顆拖動,不能再拉斷單一個鍵。右側已產生立體結構與振動模式,可以點來看看。` +
+            `這顆分子現在完全鎖定,不能再移動或拉斷鍵。右側已產生立體結構與振動模式,可以點來看看。` +
             `真正的量子化學計算(如 Hartree–Fock)是解電子的薛丁格方程式,這裡是它的簡化示意。`,
           'success'
         );
@@ -1107,9 +1132,12 @@
     mol3D = build3DGeometry();
     modes3D = computeNormalModes(mol3D);
     selectedMode = 0;
-    vibPlaying = false;
+    // 立刻自動播放第一個振動模式,不用等使用者按按鈕才看得到動畫
+    vibPlaying = modes3D.length > 0;
+    vibT0 = performance.now();
     renderVibPanel();
-    renderMolecule3D();
+    if (vibPlaying) requestAnimationFrame(renderMolecule3D);
+    else renderMolecule3D();
   }
 
   // ---- 3D 檢視器(可拖曳旋轉) ----
@@ -1127,8 +1155,8 @@
     if (!mol3D) return [];
     if (!vibPlaying || !modes3D[selectedMode]) return mol3D.atoms.map((a) => ({ ...a }));
     const mode = modes3D[selectedMode];
-    const t = (performance.now() - vibT0) / 260;
-    const amp = 0.32 * Math.sin(t);
+    const t = (performance.now() - vibT0) / 220;
+    const amp = 0.45 * Math.sin(t);
     return mol3D.atoms.map((a, i) => ({
       id: a.id,
       el: a.el,
@@ -1652,34 +1680,13 @@
       if (!a) return;
       const p = toSvgPoint(e.clientX, e.clientY);
       if (!drag.moved && Math.hypot(p.x - drag.sx, p.y - drag.sy) < 6) return;
-      const wasMoved = drag.moved;
+      const justStartedMoving = !drag.moved;
       drag.moved = true;
       if (rigidAtoms.has(a.id)) {
-        // 已最佳化的分子:整顆一起平移,鍵不會斷
-        if (drag.lastX == null) {
-          drag.lastX = wasMoved ? a.x : drag.sx;
-          drag.lastY = wasMoved ? a.y : drag.sy;
+        // 已最佳化的分子:完全鎖定,不可再移動(整顆或個別都不行)
+        if (justStartedMoving) {
+          setStatus('這顆分子已經最佳化鎖定,無法再移動。要重來的話按「清空畫布」,或選取原子用右側面板刪除。', 'warn');
         }
-        const dx = p.x - drag.lastX;
-        const dy = p.y - drag.lastY;
-        drag.lastX = p.x;
-        drag.lastY = p.y;
-        const comp = components().find((c) => c.some((x) => x.id === a.id)) || [a];
-        comp.forEach((atom) => {
-          atom.x += dx;
-          atom.y += dy;
-        });
-        const minX = Math.min(...comp.map((x) => x.x - ELEMENTS[x.el].r));
-        const maxX = Math.max(...comp.map((x) => x.x + ELEMENTS[x.el].r));
-        const minY = Math.min(...comp.map((x) => x.y - ELEMENTS[x.el].r));
-        const maxY = Math.max(...comp.map((x) => x.y + ELEMENTS[x.el].r));
-        let shiftX = 0, shiftY = 0;
-        if (minX < 4) shiftX = 4 - minX;
-        if (maxX > STAGE_W - 4) shiftX = STAGE_W - 4 - maxX;
-        if (minY < 4) shiftY = 4 - minY;
-        if (maxY > STAGE_H - 4) shiftY = STAGE_H - 4 - maxY;
-        if (shiftX || shiftY) comp.forEach((atom) => { atom.x += shiftX; atom.y += shiftY; });
-        trashHover = Math.hypot(a.x - TRASH.x, a.y - TRASH.y) < TRASH.r + 10;
       } else {
         a.x = Math.max(30, Math.min(STAGE_W - 30, p.x));
         a.y = Math.max(30, Math.min(STAGE_H - 30, p.y));
@@ -1698,16 +1705,9 @@
         selectedId = selectedId === drag.id ? null : drag.id;
         render();
       } else if (drag && drag.moved && trashHover) {
-        if (rigidAtoms.has(drag.id)) {
-          const comp = components().find((c) => c.some((x) => x.id === drag.id)) || [];
-          comp.forEach((x) => rigidAtoms.delete(x.id));
-          comp.forEach((x) => deleteAtomById(x.id));
-          setStatus('已把整顆分子丟進垃圾桶刪除。');
-        } else {
-          const a = atomById(drag.id);
-          deleteAtomById(drag.id);
-          setStatus(`已把 ${a ? a.el : ''} 原子丟進垃圾桶刪除。`);
-        }
+        const a = atomById(drag.id);
+        deleteAtomById(drag.id);
+        setStatus(`已把 ${a ? a.el : ''} 原子丟進垃圾桶刪除。`);
         trashHover = false;
         render();
       } else if (trashHover) {
