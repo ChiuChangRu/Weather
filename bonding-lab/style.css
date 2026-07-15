@@ -222,6 +222,38 @@ table.ref { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
 
 .tiny { font-size: 0.78rem; color: var(--muted); margin: 8px 0 0; line-height: 1.55; }
 
+details.info-card summary,
+details.side-note summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+  user-select: none;
+}
+details.side-note {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.6;
+  max-width: 900px;
+  margin: 6px auto 10px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 14px;
+}
+
+.ref-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+@media (max-width: 900px) {
+  .ref-cards { grid-template-columns: 1fr; }
+}
+
+.pname.pen { color: #8a93a8; font-size: 0.62rem; }
+
 .fc-formula {
   background: #f4f6fb;
   border: 1px solid var(--border);

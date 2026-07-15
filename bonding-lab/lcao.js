@@ -453,7 +453,7 @@
           fromHF: true,
           activeIR: false,
           inten: 0,
-          reason: '兩個相同的原子對稱伸縮,偶極矩始終為零,不吸收紅外光 —— 這就是 H₂、N₂、O₂ 不是溫室氣體的原因',
+          reason: '兩個相同的原子對稱伸縮,偶極矩始終為零,不吸收紅外光。想一想:N₂、O₂ 是不是也一樣?',
           disp: [[-1, 0], [1, 0]],
         },
       ],
@@ -480,7 +480,7 @@
           freq: 1595,
           activeIR: true,
           inten: 0.7,
-          reason: '鍵角開合改變偶極矩 → IR 活躍;水蒸氣因此是最重要的天然溫室氣體',
+          reason: '鍵角開合改變偶極矩 → IR 活躍。看看這個頻率落在地球熱輻射的哪裡?',
           disp: [[0, -0.35], [-0.62, 0.78], [0.62, 0.78]],
         },
         {
@@ -515,7 +515,7 @@
           freq: 667,
           activeIR: true,
           inten: 0.7,
-          reason: '分子彎折產生偶極矩 → IR 活躍;這是 CO₂ 吸收地球輻射的主要頻道之一',
+          reason: '直線分子彎折時產生偶極矩 → IR 活躍。這個峰落在光譜的哪個位置?',
           disp: [[0, -0.6], [0, 1.6], [0, -0.6]],
         },
         {
@@ -523,7 +523,7 @@
           freq: 2349,
           activeIR: true,
           inten: 0.9,
-          reason: '兩個 O 往同方向、C 反方向,偶極矩改變 → IR 活躍(CO₂ 是溫室氣體的關鍵吸收峰)',
+          reason: '兩個 O 往同方向、C 反方向,偶極矩改變 → IR 活躍。對照橙色的地球熱輻射曲線想一想它攔下了什麼',
           disp: [[0.5, 0], [-1.4, 0], [0.5, 0]],
         },
       ],
@@ -648,6 +648,36 @@
     const yl = el('text', { x: 14, y: (T + Hh - Bm) / 2, 'text-anchor': 'middle', 'font-size': 11, fill: '#667085', transform: `rotate(-90 14 ${(T + Hh - Bm) / 2})` });
     yl.textContent = '穿透率 %T';
     g.appendChild(yl);
+
+    // 疊圖:地球熱輻射(288 K)與太陽輻射尾端(5778 K)的黑體曲線(各自歸一化,示意)
+    const planck = (w, T) => {
+      const x = (1.4388 * w) / T;
+      return (w * w * w) / (Math.expm1(x) || 1e-12);
+    };
+    const y0 = yPx(0);
+    let earthMax = 0;
+    for (let w = xLo; w <= xHi; w += 10) earthMax = Math.max(earthMax, planck(w, 288));
+    const earthH = (Hh - T - Bm) * 0.55;
+    let dEarth = `M${xPx(xHi).toFixed(1)},${y0.toFixed(1)} `;
+    for (let w = xHi; w >= xLo; w -= 10) {
+      dEarth += `L${xPx(w).toFixed(1)},${(y0 - (planck(w, 288) / earthMax) * earthH).toFixed(1)} `;
+    }
+    dEarth += `L${xPx(xLo).toFixed(1)},${y0.toFixed(1)} Z`;
+    g.appendChild(el('path', { d: dEarth, fill: 'rgba(232,148,10,.16)', stroke: '#e8940a', 'stroke-width': 1.3 }));
+    const sunRef = planck(xHi, 5778);
+    const sunH = (Hh - T - Bm) * 0.3;
+    let dSun = `M${xPx(xHi).toFixed(1)},${y0.toFixed(1)} `;
+    for (let w = xHi; w >= xLo; w -= 10) {
+      dSun += `L${xPx(w).toFixed(1)},${(y0 - (planck(w, 5778) / sunRef) * sunH).toFixed(1)} `;
+    }
+    dSun += `L${xPx(xLo).toFixed(1)},${y0.toFixed(1)} Z`;
+    g.appendChild(el('path', { d: dSun, fill: 'rgba(250,204,21,.15)', stroke: '#d4a90a', 'stroke-width': 1, 'stroke-dasharray': '4,3' }));
+    const legEarth = el('text', { x: L + 8, y: T + 12, 'font-size': 11, 'font-weight': 700, fill: '#e8940a' });
+    legEarth.textContent = '━ 地球熱輻射(288 K,往太空散熱)';
+    g.appendChild(legEarth);
+    const legSun = el('text', { x: L + 8, y: T + 26, 'font-size': 11, fill: '#b8930a' });
+    legSun.textContent = '┅ 太陽輻射尾端(5778 K,主要能量在可見光,超出圖右)';
+    g.appendChild(legSun);
 
     // 光譜曲線(Lorentzian 吸收峰)
     const gamma = 42;
