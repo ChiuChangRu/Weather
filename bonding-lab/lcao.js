@@ -434,6 +434,297 @@
     requestAnimationFrame(frame);
   }
 
+  // ---- 分子振動模式 與 IR 光譜 ----
+  const VIB_COLORS = { H: '#aab4f7', C: '#d6d6d6', N: '#a8e6b8', O: '#f5abc9' };
+  const VIB_R = { H: 13, C: 17, N: 17, O: 17 };
+
+  const VIBS = {
+    H2: {
+      label: 'H₂',
+      atoms: [
+        { el: 'H', x: -40, y: 0 },
+        { el: 'H', x: 40, y: 0 },
+      ],
+      links: [[0, 1]],
+      modes: [
+        {
+          name: '伸縮振動',
+          freq: 0,
+          fromHF: true,
+          activeIR: false,
+          inten: 0,
+          reason: '兩個相同的原子對稱伸縮,偶極矩始終為零,不吸收紅外光 —— 這就是 H₂、N₂、O₂ 不是溫室氣體的原因',
+          disp: [[-1, 0], [1, 0]],
+        },
+      ],
+    },
+    H2O: {
+      label: 'H₂O',
+      atoms: [
+        { el: 'O', x: 0, y: 16 },
+        { el: 'H', x: -38, y: -14 },
+        { el: 'H', x: 38, y: -14 },
+      ],
+      links: [[0, 1], [0, 2]],
+      modes: [
+        {
+          name: '對稱伸縮 ν₁',
+          freq: 3657,
+          activeIR: true,
+          inten: 0.35,
+          reason: '兩個 O–H 鍵同時伸長縮短,偶極矩大小改變 → IR 活躍',
+          disp: [[0, 0.3], [-0.78, -0.62], [0.78, -0.62]],
+        },
+        {
+          name: '彎曲(剪刀式)ν₂',
+          freq: 1595,
+          activeIR: true,
+          inten: 0.7,
+          reason: '鍵角開合改變偶極矩 → IR 活躍;水蒸氣因此是最重要的天然溫室氣體',
+          disp: [[0, -0.35], [-0.62, 0.78], [0.62, 0.78]],
+        },
+        {
+          name: '不對稱伸縮 ν₃',
+          freq: 3756,
+          activeIR: true,
+          inten: 0.85,
+          reason: '一邊伸長、一邊縮短,偶極矩方向改變 → IR 活躍',
+          disp: [[0.35, 0], [-0.78, -0.62], [-0.78, 0.62]],
+        },
+      ],
+    },
+    CO2: {
+      label: 'CO₂',
+      atoms: [
+        { el: 'O', x: -64, y: 0 },
+        { el: 'C', x: 0, y: 0 },
+        { el: 'O', x: 64, y: 0 },
+      ],
+      links: [[0, 1], [1, 2]],
+      modes: [
+        {
+          name: '對稱伸縮 ν₁',
+          freq: 1333,
+          activeIR: false,
+          inten: 0,
+          reason: '兩個 C=O 對稱伸縮,偶極矩保持為零 → IR 不活躍(光譜上看不到這個峰)',
+          disp: [[-1, 0], [0, 0], [1, 0]],
+        },
+        {
+          name: '彎曲 ν₂',
+          freq: 667,
+          activeIR: true,
+          inten: 0.7,
+          reason: '分子彎折產生偶極矩 → IR 活躍;這是 CO₂ 吸收地球輻射的主要頻道之一',
+          disp: [[0, -0.6], [0, 1.6], [0, -0.6]],
+        },
+        {
+          name: '不對稱伸縮 ν₃',
+          freq: 2349,
+          activeIR: true,
+          inten: 0.9,
+          reason: '兩個 O 往同方向、C 反方向,偶極矩改變 → IR 活躍(CO₂ 是溫室氣體的關鍵吸收峰)',
+          disp: [[0.5, 0], [-1.4, 0], [0.5, 0]],
+        },
+      ],
+    },
+  };
+
+  const vibState = { mol: 'H2O', mode: 1 };
+  let h2FreqCache = null;
+
+  // 由 HF 曲線在谷底的二階導數(力常數)+ 諧振子近似求 H₂ 振動頻率
+  function h2Frequency() {
+    if (h2FreqCache) return h2FreqCache;
+    let bR = 1.4;
+    let bE = Infinity;
+    for (let R = 1.0; R <= 1.8; R += 0.002) {
+      const E = HF.energy(R);
+      if (E < bE) {
+        bE = E;
+        bR = R;
+      }
+    }
+    const h = 0.01;
+    const k = (HF.energy(bR + h) - 2 * HF.energy(bR) + HF.energy(bR - h)) / (h * h); // hartree/bohr²
+    const HARTREE = 4.3597447e-18;
+    const BOHR_M = 5.29177e-11;
+    const MU = 0.5 * 1.6735575e-27; // H₂ 約化質量(kg)
+    const omega = Math.sqrt((k * HARTREE) / (BOHR_M * BOHR_M) / MU); // rad/s
+    const cm = omega / (2 * Math.PI * 2.99792458e10);
+    h2FreqCache = Math.round(cm);
+    return h2FreqCache;
+  }
+
+  function currentMode() {
+    const mol = VIBS[vibState.mol];
+    const mode = mol.modes[vibState.mode];
+    if (mode.fromHF && !mode.freq) mode.freq = h2Frequency();
+    return { mol, mode };
+  }
+
+  function drawVibFrame(now) {
+    const svg = document.getElementById('svg-vib');
+    if (!svg) return;
+    const { mol, mode } = currentMode();
+    const periodMs = (900 * 1600) / Math.max(mode.freq, 400);
+    const amp = 13 * Math.sin((2 * Math.PI * now) / periodMs);
+    const cx = 220;
+    const cy = 100;
+    svg.innerHTML = '';
+    const g = el('g', {});
+    svg.appendChild(g);
+    const pos = mol.atoms.map((a, i) => ({
+      x: cx + a.x + mode.disp[i][0] * amp,
+      y: cy + a.y + mode.disp[i][1] * amp,
+    }));
+    mol.links.forEach(([i, j]) => {
+      g.appendChild(el('line', { x1: pos[i].x, y1: pos[i].y, x2: pos[j].x, y2: pos[j].y, stroke: '#8a8f9c', 'stroke-width': 4 }));
+    });
+    mol.atoms.forEach((a, i) => {
+      g.appendChild(el('circle', { cx: pos[i].x, cy: pos[i].y, r: VIB_R[a.el], fill: VIB_COLORS[a.el], stroke: '#666', 'stroke-width': 1.5 }));
+      const t = el('text', { x: pos[i].x, y: pos[i].y, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': 13, 'font-weight': 700, fill: '#222' });
+      t.textContent = a.el;
+      g.appendChild(t);
+    });
+    // 位移箭頭(靜態方向提示)
+    mol.atoms.forEach((a, i) => {
+      const [dx, dy] = mode.disp[i];
+      if (!dx && !dy) return;
+      const n = Math.hypot(dx, dy);
+      const sx = cx + a.x + (dx / n) * (VIB_R[a.el] + 4);
+      const sy = cy + a.y + (dy / n) * (VIB_R[a.el] + 4);
+      const ex = cx + a.x + (dx / n) * (VIB_R[a.el] + 18);
+      const ey = cy + a.y + (dy / n) * (VIB_R[a.el] + 18);
+      g.appendChild(el('line', { x1: sx, y1: sy, x2: ex, y2: ey, stroke: '#e8940a', 'stroke-width': 2 }));
+      const ang = Math.atan2(ey - sy, ex - sx);
+      const a1 = ang + 2.6;
+      const a2 = ang - 2.6;
+      g.appendChild(
+        el('path', {
+          d: `M${ex},${ey} L${ex + 6 * Math.cos(a1)},${ey + 6 * Math.sin(a1)} M${ex},${ey} L${ex + 6 * Math.cos(a2)},${ey + 6 * Math.sin(a2)}`,
+          stroke: '#e8940a',
+          'stroke-width': 2,
+          fill: 'none',
+        })
+      );
+    });
+    requestAnimationFrame(drawVibFrame);
+  }
+
+  function drawIR() {
+    const svg = document.getElementById('svg-ir');
+    const { mol, mode } = currentMode();
+    const xHi = vibState.mol === 'H2' ? 6200 : 4000;
+    const xLo = 400;
+    const L = 64, Rm = 20, T = 16, Bm = 40;
+    const W = 900, Hh = 220;
+    const xPx = (w) => L + ((xHi - w) / (xHi - xLo)) * (W - L - Rm); // 左高右低
+    const yPx = (Tpct) => T + ((100 - Tpct) / 100) * (Hh - T - Bm);
+
+    svg.innerHTML = '';
+    const g = el('g', {});
+    svg.appendChild(g);
+    g.appendChild(el('line', { x1: L, y1: T, x2: L, y2: Hh - Bm, stroke: '#99a1b3', 'stroke-width': 1 }));
+    g.appendChild(el('line', { x1: L, y1: Hh - Bm, x2: W - Rm, y2: Hh - Bm, stroke: '#99a1b3', 'stroke-width': 1 }));
+    const tickStep = vibState.mol === 'H2' ? 1000 : 500;
+    for (let w = Math.floor(xHi / tickStep) * tickStep; w >= xLo; w -= tickStep) {
+      const px = xPx(w);
+      g.appendChild(el('line', { x1: px, y1: Hh - Bm, x2: px, y2: Hh - Bm + 4, stroke: '#99a1b3', 'stroke-width': 1 }));
+      const t = el('text', { x: px, y: Hh - Bm + 16, 'text-anchor': 'middle', 'font-size': 10.5, fill: '#667085' });
+      t.textContent = w;
+      g.appendChild(t);
+    }
+    const xl = el('text', { x: (L + W - Rm) / 2, y: Hh - 6, 'text-anchor': 'middle', 'font-size': 11, fill: '#667085' });
+    xl.textContent = '波數(cm⁻¹)';
+    g.appendChild(xl);
+    [0, 50, 100].forEach((pct) => {
+      const py = yPx(pct);
+      g.appendChild(el('line', { x1: L - 4, y1: py, x2: L, y2: py, stroke: '#99a1b3', 'stroke-width': 1 }));
+      const t = el('text', { x: L - 7, y: py + 3.5, 'text-anchor': 'end', 'font-size': 10.5, fill: '#667085' });
+      t.textContent = pct;
+      g.appendChild(t);
+    });
+    const yl = el('text', { x: 14, y: (T + Hh - Bm) / 2, 'text-anchor': 'middle', 'font-size': 11, fill: '#667085', transform: `rotate(-90 14 ${(T + Hh - Bm) / 2})` });
+    yl.textContent = '穿透率 %T';
+    g.appendChild(yl);
+
+    // 光譜曲線(Lorentzian 吸收峰)
+    const gamma = 42;
+    let d = '';
+    for (let w = xHi; w >= xLo; w -= 6) {
+      let Tpct = 100;
+      mol.modes.forEach((m) => {
+        if (!m.activeIR) return;
+        const f = m.fromHF ? h2Frequency() : m.freq;
+        const z = (w - f) / gamma;
+        Tpct -= m.inten * 96 * (1 / (1 + z * z));
+      });
+      d += (d ? 'L' : 'M') + xPx(w).toFixed(1) + ',' + yPx(Math.max(Tpct, 2)).toFixed(1) + ' ';
+    }
+    g.appendChild(el('path', { d, fill: 'none', stroke: '#1f2430', 'stroke-width': 2 }));
+
+    // 各活躍峰標籤
+    mol.modes.forEach((m) => {
+      if (!m.activeIR) return;
+      const px = xPx(m.freq);
+      const t = el('text', { x: px, y: yPx(100 - m.inten * 96) + 14, 'text-anchor': 'middle', 'font-size': 10.5, fill: '#667085' });
+      t.textContent = m.freq;
+      g.appendChild(t);
+    });
+    // 選取模式標記
+    const selF = mode.fromHF ? h2Frequency() : mode.freq;
+    const spx = xPx(selF);
+    g.appendChild(el('line', { x1: spx, y1: T, x2: spx, y2: Hh - Bm, stroke: '#3b5bdb', 'stroke-width': 1.5, 'stroke-dasharray': '5,4' }));
+    const st = el('text', { x: spx, y: T - 3, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700, fill: '#3b5bdb' });
+    st.textContent = `${mode.name} ${selF} cm⁻¹${mode.activeIR ? '' : '(IR 不活躍,無吸收峰)'}`;
+    g.appendChild(st);
+  }
+
+  function updateVibText() {
+    const { mode } = currentMode();
+    const f = mode.fromHF ? h2Frequency() : mode.freq;
+    const textEl = document.getElementById('vib-text');
+    const src = mode.fromHF
+      ? `ω = ${f} cm⁻¹ —— 由上方 HF/STO-3G 能量曲線的力常數(二階導數)+ 諧振子近似即時算出;實驗值 4401 cm⁻¹,HF 一如預期偏高`
+      : `ω = ${f} cm⁻¹(實驗值)`;
+    textEl.innerHTML = `<b>${mode.name}</b>:${src}。${mode.activeIR ? '✔ IR 活躍' : '✘ IR 不活躍'} —— ${mode.reason}。`;
+    textEl.className = 'status-line ' + (mode.activeIR ? 'success' : 'warn');
+  }
+
+  function buildVibButtons() {
+    const molWrap = document.getElementById('vib-mol-buttons');
+    const modeWrap = document.getElementById('vib-mode-buttons');
+    molWrap.innerHTML = '';
+    Object.entries(VIBS).forEach(([key, m]) => {
+      const btn = document.createElement('button');
+      btn.className = 'orb-btn' + (key === vibState.mol ? ' active' : '');
+      btn.textContent = m.label;
+      btn.addEventListener('click', () => {
+        vibState.mol = key;
+        vibState.mode = 0;
+        buildVibButtons();
+        drawIR();
+        updateVibText();
+      });
+      molWrap.appendChild(btn);
+    });
+    modeWrap.innerHTML = '';
+    VIBS[vibState.mol].modes.forEach((m, i) => {
+      const btn = document.createElement('button');
+      const f = m.fromHF ? h2Frequency() : m.freq;
+      btn.className = 'orb-btn' + (i === vibState.mode ? ' active' : '');
+      btn.textContent = `${m.name} ${f} cm⁻¹ ${m.activeIR ? '✔IR' : '✘IR'}`;
+      btn.addEventListener('click', () => {
+        vibState.mode = i;
+        buildVibButtons();
+        drawIR();
+        updateVibText();
+      });
+      modeWrap.appendChild(btn);
+    });
+  }
+
   function init() {
     const orbitalButtonsEl = document.getElementById('orbital-buttons');
     ORBITAL_TYPES.forEach((o, idx) => {
@@ -464,6 +755,12 @@
 
     document.getElementById('btn-hf').addEventListener('click', runHF);
     window.__hf = HF; // 測試用鉤子
+    window.__vib = { state: vibState, h2Frequency }; // 測試用鉤子
+
+    buildVibButtons();
+    drawIR();
+    updateVibText();
+    requestAnimationFrame(drawVibFrame);
 
     renderAll();
   }

@@ -4,13 +4,22 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>化學鍵結互動教學 — 共價鍵形成 與 LCAO 分子軌域理論</title>
-<link rel="stylesheet" href="style.css?v=5" />
+<link rel="stylesheet" href="style.css?v=6" />
 </head>
 <body>
 
 <header class="app-header">
-  <h1>化學鍵結互動教學</h1>
-  <p class="subtitle">普通化學 · 共價鍵形成 &amp; LCAO 分子軌域理論</p>
+  <div class="header-row">
+    <figure class="pauling-fig">
+      <img src="pauling.png?v=6" alt="Linus Pauling 與分子模型" class="pauling-img"
+           onerror="this.onerror=null;this.src='pauling.svg'" />
+      <figcaption>Linus Pauling<br>《化學鍵的本質》</figcaption>
+    </figure>
+    <div>
+      <h1>化學鍵結互動教學</h1>
+      <p class="subtitle">普通化學 · 共價鍵形成 &amp; LCAO 分子軌域理論</p>
+    </div>
+  </div>
 </header>
 
 <nav class="tabs" role="tablist">
@@ -154,6 +163,24 @@
       <svg id="svg-hf" viewBox="0 0 900 240"></svg>
       <p id="hf-text" class="status-line">按下按鈕開始掃描。</p>
     </div>
+
+    <div class="panel-box full-width">
+      <h3>分子振動模式 與 IR 紅外光譜</h3>
+      <p class="tiny" style="text-align:center">
+        分子會像彈簧一樣振動。振動若會<b>改變偶極矩</b>就能吸收紅外光（IR 活躍），在光譜上出現吸收峰。
+        H₂ 的振動頻率不是查表 —— 是把上面 Hartree–Fock 能量曲線在谷底做二階微分（諧振子近似）即時算出來的。
+      </p>
+      <div class="canvas-tools" style="justify-content:center">
+        <div class="orbital-buttons" id="vib-mol-buttons"></div>
+      </div>
+      <div class="canvas-tools" style="justify-content:center">
+        <div class="orbital-buttons" id="vib-mode-buttons"></div>
+      </div>
+      <svg id="svg-vib" viewBox="0 0 440 190" style="max-width:460px;margin:0 auto;display:block"></svg>
+      <p id="vib-text" class="status-line"></p>
+      <h3 style="margin-top:10px">IR 光譜（穿透率 %T,x 軸依慣例由高波數往低）</h3>
+      <svg id="svg-ir" viewBox="0 0 900 220"></svg>
+    </div>
   </section>
 </main>
 
@@ -161,8 +188,8 @@
   <p>多數圖示為教學用簡化示意；「H₂ Hartree–Fock」面板為真實的從頭計算（RHF／STO-3G）。</p>
 </footer>
 
-<script src="main.js?v=5"></script>
-<script src="lewis.js?v=5"></script>
-<script src="lcao.js?v=5"></script>
+<script src="main.js?v=6"></script>
+<script src="lewis.js?v=6"></script>
+<script src="lcao.js?v=6"></script>
 </body>
 </html>
