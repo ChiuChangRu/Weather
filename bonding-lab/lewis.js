@@ -30,6 +30,8 @@
   let nextId = 1;
   let selectedId = null;
   let drag = null;
+  let trashHover = false;
+  const TRASH = { x: STAGE_W - 54, y: STAGE_H - 54, r: 32 };
   const doneTargets = new Set();
 
   let stage, statusEl, readoutEl, chipsEl, selPanelEl;
@@ -229,13 +231,54 @@
     render();
   }
 
+  function deleteAtomById(id) {
+    bonds = bonds.filter((b) => b.a !== id && b.b !== id);
+    atoms = atoms.filter((a) => a.id !== id);
+    if (selectedId === id) selectedId = null;
+  }
+
   function deleteSelected() {
     if (selectedId == null) return;
-    bonds = bonds.filter((b) => b.a !== selectedId && b.b !== selectedId);
-    atoms = atoms.filter((a) => a.id !== selectedId);
-    selectedId = null;
+    deleteAtomById(selectedId);
     setStatus('已刪除原子。');
     render();
+  }
+
+  function drawTrash(layer) {
+    const { x, y } = TRASH;
+    const col = trashHover ? '#e03131' : '#909aa8';
+    const g = el('g', { 'pointer-events': 'none' });
+    g.appendChild(
+      el('circle', {
+        cx: x,
+        cy: y,
+        r: TRASH.r,
+        fill: trashHover ? '#ffe3e3' : '#f1f3f5',
+        stroke: trashHover ? '#e03131' : '#d5dae2',
+        'stroke-width': 1.5,
+      })
+    );
+    // 桶身
+    g.appendChild(
+      el('path', {
+        d: `M${x - 9},${y - 5} h18 l-2.5,16 a3,3 0 0 1 -3,2.5 h-7 a3,3 0 0 1 -3,-2.5 z`,
+        fill: 'none',
+        stroke: col,
+        'stroke-width': 2,
+        'stroke-linejoin': 'round',
+      })
+    );
+    // 桶蓋與提把
+    g.appendChild(el('line', { x1: x - 12, y1: y - 8, x2: x + 12, y2: y - 8, stroke: col, 'stroke-width': 2, 'stroke-linecap': 'round' }));
+    g.appendChild(el('path', { d: `M${x - 4},${y - 8} v-3.5 h8 v3.5`, fill: 'none', stroke: col, 'stroke-width': 2 }));
+    // 直紋
+    [-4, 0, 4].forEach((dx) => {
+      g.appendChild(el('line', { x1: x + dx, y1: y - 1, x2: x + dx, y2: y + 9, stroke: col, 'stroke-width': 1.5, 'stroke-linecap': 'round' }));
+    });
+    const t = el('text', { x, y: y + TRASH.r + 13, 'text-anchor': 'middle', 'font-size': 11, fill: col });
+    t.textContent = trashHover ? '放開即刪除' : '拖到這裡刪除';
+    g.appendChild(t);
+    layer.appendChild(g);
   }
 
   function clearAll() {
@@ -290,6 +333,17 @@
       .map((c) => SUBSCRIPT[c])
       .join('');
   }
+  // 小型能量條:penalty 0 = 穩定(綠),越大越不穩定(橘→紅)
+  function meter(penalty) {
+    const pct = Math.min(100, 8 + penalty * 16);
+    const color = penalty === 0 ? '#2f9e44' : penalty <= 2 ? '#e8940a' : '#e03131';
+    const label = penalty === 0 ? '能量低' : penalty <= 2 ? '能量中' : '能量高';
+    return (
+      `<span class="ebar" title="相對能量(示意)"><span style="width:${pct}%;background:${color}"></span></span>` +
+      `<span class="etext" style="color:${color}">${label}</span>`
+    );
+  }
+
   function formulaDisplay(counts) {
     if (counts.O === 1 && counts.H === 1 && !counts.C && !counts.N) return 'OH';
     return ['C', 'N', 'H', 'O']
@@ -330,10 +384,17 @@
       const target = TARGETS.find((t) => t.key === key);
       const net = comp.reduce((s, a) => s + derived(a).fc, 0);
       const allSat = comp.every((a) => derived(a).satisfied);
+      // 簡化的「相對能量」:未配對電子與形式電荷越多,能量越高越不穩定
+      const penalty = comp.reduce((s, a) => {
+        const d = derived(a);
+        return s + d.unpaired * 2 + Math.abs(d.fc);
+      }, 0);
       let name = target ? target.label : formulaDisplay(counts);
       if (net !== 0) name += net > 0 ? `(離子,電荷 +${net})` : `(離子,電荷 −${-net})`;
-      if (allSat) {
-        lines.push(`✓ ${name} — 每個原子都達成八隅體(H 為二隅體),形式電荷合計 ${net > 0 ? '+' + net : net}。`);
+      if (allSat && net === 0) {
+        lines.push(`${meter(0)} ✓ <b>${name}</b> — 每個原子都達成八隅體(H 為二隅體),能量低、結構穩定,可以存在!`);
+      } else if (allSat) {
+        lines.push(`${meter(Math.max(penalty, 1))} ✓ <b>${name}</b> — 八隅體完成但整體帶電,是離子:能量稍高,通常要和相反電荷的離子一起存在。`);
       } else {
         const need = {};
         comp.forEach((a) => {
@@ -343,13 +404,18 @@
         const needText = Object.entries(need)
           .map(([e, n]) => `${e} 還有 ${n} 個未配對電子`)
           .join('、');
-        lines.push(`◌ ${name} — 尚未完成:${needText || '電子排列不完整'}。`);
+        lines.push(
+          `${meter(penalty)} ⚠ <b>${name}</b> — 這樣接不穩定!${needText || '電子排列不完整'},能量偏高,會繼續反應直到八隅體完成。`
+        );
       }
     });
     const singleText = Object.entries(singles)
       .map(([e, n]) => `${e}×${n}`)
       .join('、');
-    if (singleText) lines.push(`未鍵結原子:${singleText}`);
+    if (singleText) {
+      const singleCount = Object.values(singles).reduce((s, n) => s + n, 0);
+      lines.push(`${meter(singleCount * 2)} 未鍵結原子:${singleText} — 單獨的原子能量高、不穩定,拖去找伴成鍵吧!`);
+    }
     readoutEl.innerHTML = lines.length
       ? lines.map((l) => `<div>${l}</div>`).join('')
       : '<div>畫布是空的。</div>';
@@ -391,6 +457,8 @@
     const atomLayer = el('g', {});
     stage.appendChild(bondLayer);
     stage.appendChild(atomLayer);
+
+    drawTrash(bondLayer);
 
     bonds.forEach((b) => {
       const a1 = atomById(b.a);
@@ -459,8 +527,8 @@
           cy: a.y,
           r: info.r,
           fill: info.color,
-          stroke: d.satisfied ? '#2f9e44' : '#666',
-          'stroke-width': d.satisfied ? 3 : 1.5,
+          stroke: d.satisfied ? '#2f9e44' : d.unpaired > 0 ? '#e8940a' : '#666',
+          'stroke-width': d.satisfied ? 3 : d.unpaired > 0 ? 2.5 : 1.5,
         })
       );
       const label = el('text', {
@@ -567,13 +635,23 @@
       drag.moved = true;
       a.x = Math.max(30, Math.min(STAGE_W - 30, p.x));
       a.y = Math.max(30, Math.min(STAGE_H - 30, p.y));
+      trashHover = Math.hypot(a.x - TRASH.x, a.y - TRASH.y) < TRASH.r + 10;
       checkBreak(a);
-      checkForm(a);
+      if (!trashHover) checkForm(a);
       render();
     });
     const endDrag = () => {
       if (drag && !drag.moved) {
         selectedId = selectedId === drag.id ? null : drag.id;
+        render();
+      } else if (drag && drag.moved && trashHover) {
+        const a = atomById(drag.id);
+        deleteAtomById(drag.id);
+        setStatus(`已把 ${a ? a.el : ''} 原子丟進垃圾桶刪除。`);
+        trashHover = false;
+        render();
+      } else if (trashHover) {
+        trashHover = false;
         render();
       }
       drag = null;

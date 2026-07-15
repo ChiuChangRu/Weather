@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>化學鍵結互動教學 — 共價鍵形成 與 LCAO 分子軌域理論</title>
-<link rel="stylesheet" href="style.css?v=2" />
+<link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
 
@@ -23,7 +23,8 @@
     <p class="panel-intro">
       從左側「原子盒」點一下原子加入畫布。每個原子都畫出它的價電子：成對的是<b>孤對電子</b>、單獨的是<b>未配對電子</b>（可以成鍵）。
       拖曳兩個原子靠近，未配對電子會互相配對成<b>共用電子對</b>（黃底）形成共價鍵；點一下鍵可升級為雙鍵／三鍵（兩端都要還有未配對電子）。
-      點選原子可查看<b>形式電荷</b>的計算，並可增減電子做出離子。試著完成上方的目標分子！
+      點選原子可查看<b>形式電荷</b>的計算，並可增減電子做出離子；不要的原子拖到右下角<b>垃圾桶</b>即可刪除。
+      下方的<b>能量條</b>會告訴你目前的結構穩不穩定 —— 只有能量低的穩定結構才會存在！試著完成上方的目標分子！
     </p>
 
     <div class="lewis-layout">
@@ -38,7 +39,7 @@
         <svg id="lewis-stage" viewBox="0 0 760 520" preserveAspectRatio="xMidYMid meet"></svg>
         <p class="legend">
           單獨黑點＝未配對電子（可成鍵）　黑點成對＝孤對電子　黃底電子對＝共用電子對（共價鍵）
-          綠色外框＝八隅體／二隅體完成　紅＋／藍−徽章＝形式電荷
+          綠框＝八隅體完成（穩定）　橘框＝還有未配對電子（不穩定）　紅＋／藍−徽章＝形式電荷
         </p>
         <p id="lewis-status" class="status-line">先從左側加入原子吧！</p>
         <div id="component-readout" class="readout"></div>
@@ -137,8 +138,8 @@
   <p>教學用簡化示意圖，非精確量子力學計算結果。</p>
 </footer>
 
-<script src="main.js?v=2"></script>
-<script src="lewis.js?v=2"></script>
-<script src="lcao.js?v=2"></script>
+<script src="main.js?v=3"></script>
+<script src="lewis.js?v=3"></script>
+<script src="lcao.js?v=3"></script>
 </body>
 </html>

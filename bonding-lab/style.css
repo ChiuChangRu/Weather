@@ -151,7 +151,19 @@ main { max-width: 1000px; margin: 0 auto; padding: 20px; }
 .chip.done { background: #e6f7ec; border-color: #2f9e44; color: #1e824c; font-weight: 600; }
 
 .readout { font-size: 0.85rem; color: var(--text); margin-top: 4px; }
-.readout div { padding: 2px 0; }
+.readout div { padding: 3px 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.ebar {
+  display: inline-block;
+  width: 64px;
+  height: 8px;
+  border-radius: 999px;
+  background: #e9edf3;
+  overflow: hidden;
+  flex: none;
+}
+.ebar span { display: block; height: 100%; border-radius: 999px; }
+.etext { font-size: 0.72rem; font-weight: 700; flex: none; }
 
 .info-panel { display: flex; flex-direction: column; gap: 12px; }
 .info-card {
