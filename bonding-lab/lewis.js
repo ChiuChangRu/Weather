@@ -744,6 +744,8 @@
     // 電子雲、偶極箭頭一定要用這份「目前實際畫在哪裡」的座標,才不會跟看得到的原子分家。
     const screenPos = rigidScreenPositions();
     const posOf = (id) => screenPos.get(id) || atomById(id);
+    const restPos = restScreenPositions();
+    const restPosOf = (id) => restPos.get(id) || atomById(id);
     const tOf = (a) => Math.max(-1, Math.min(1, pullOf(a) / PULL_NORM));
 
     const defs = el('defs', {});
@@ -785,15 +787,22 @@
       }
     });
     bonds.forEach((b) => {
-      // 鍵中間補一顆軟球,讓兩個原子的雲在鍵上連成一片(不會斷開),顏色沿彩虹色階漸變
+      // 鍵中間補一顆軟球,讓兩個原子的雲在鍵上連成一片(不會斷開),顏色沿彩虹色階漸變。
+      // 體積大小用「平衡鍵長」算,不能用振動當下的瞬時鍵長——否則鍵拉長時雲反而畫得更大顆,
+      // 鍵壓縮時反而畫得更小顆,恰好跟真實電子密度(壓縮時軌域重疊多、密度更高)相反。
+      // 瞬時鍵長只拿來算「濃淡」:壓縮→密度變高(更不透明),拉伸→密度變低(更淡更擴散)。
       const a1 = atomById(b.a);
       const a2 = atomById(b.b);
       const p1 = posOf(b.a), p2 = posOf(b.b);
+      const rp1 = restPosOf(b.a), rp2 = restPosOf(b.b);
+      const restLen = Math.hypot(rp2.x - rp1.x, rp2.y - rp1.y) || 1;
+      const liveLen = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+      const densityFactor = Math.max(0.55, Math.min(1.5, restLen / liveLen));
       const midColor = espColorMix(tOf(a1), tOf(a2), 0.5);
       const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
       const gradId = `cloud-bond-${b.a}-${b.b}`;
-      radialBlob(gradId, midColor, 0.8);
-      const R = Math.hypot(p2.x - p1.x, p2.y - p1.y) / 2 + 20 + 5 * b.order;
+      radialBlob(gradId, midColor, Math.min(1, 0.8 * densityFactor));
+      const R = restLen / 2 + 20 + 5 * b.order;
       cloudGroup.appendChild(el('circle', { cx: mx, cy: my, r: R, fill: `url(#${gradId})` }));
       // 鍵上四分之一/四分之三處再各補一顆較小的球,讓色階過渡更連續平滑(仿真正 ESP 表面的漸層)
       [0.25, 0.75].forEach((frac) => {
@@ -801,7 +810,7 @@
         const qy = p1.y + (p2.y - p1.y) * frac;
         const qColor = espColorMix(tOf(a1), tOf(a2), frac);
         const qGradId = `cloud-bondq-${b.a}-${b.b}-${frac}`;
-        radialBlob(qGradId, qColor, 0.7);
+        radialBlob(qGradId, qColor, Math.min(1, 0.7 * densityFactor));
         cloudGroup.appendChild(el('circle', { cx: qx, cy: qy, r: R * 0.72, fill: `url(#${qGradId})` }));
       });
     });
@@ -1332,6 +1341,23 @@
     mol3D.atoms.forEach((a) => { maxR = Math.max(maxR, Math.hypot(a.x, a.y, a.z) + 0.35); });
     const scale = slot.scale / maxR;
     mol3DLivePositions().forEach((a) => {
+      const proj = project3D(a);
+      map.set(a.id, { x: slot.cx + proj.x * scale, y: slot.cy - proj.y * scale, z: proj.z, scale });
+    });
+    return map;
+  }
+
+  // 跟 rigidScreenPositions 一樣的投影,但用平衡結構座標(不含振動位移)。
+  // 電子雲的「體積大小」要用這份座標算,振動時鍵長的瞬時伸縮不該讓雲的體積跟著膨脹/收縮——
+  // 真正該變的是雲的濃淡(鍵壓縮時軌域重疊變多、密度變高;鍵拉長時重疊變少、密度變低)。
+  function restScreenPositions() {
+    const map = new Map();
+    if (!mol3D) return map;
+    const slot = rigidSlotOf.get(mol3D.atoms[0]?.id) || { cx: STAGE_W / 2, cy: STAGE_H / 2, scale: 130 };
+    let maxR = 1;
+    mol3D.atoms.forEach((a) => { maxR = Math.max(maxR, Math.hypot(a.x, a.y, a.z) + 0.35); });
+    const scale = slot.scale / maxR;
+    mol3D.atoms.forEach((a) => {
       const proj = project3D(a);
       map.set(a.id, { x: slot.cx + proj.x * scale, y: slot.cy - proj.y * scale, z: proj.z, scale });
     });
