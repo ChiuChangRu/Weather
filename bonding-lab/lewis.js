@@ -720,6 +720,11 @@
   // 電子雲畫成連續、模糊邊緣的「海綿/棉花」狀電子密度表面(仿 ESP 電位表面圖),
   // 而不是一顆一顆的點:每個原子與每根鍵各給一顆模糊漸層的軟球,彼此重疊融合成一片。
   function drawCloud(layer) {
+    // 已最佳化鎖定的原子現在是用 3D 旋轉投影畫的,螢幕位置跟 a.x/a.y(攤平座標)不一樣了 ——
+    // 電子雲、偶極箭頭一定要用這份「目前實際畫在哪裡」的座標,才不會跟看得到的原子分家。
+    const screenPos = rigidScreenPositions();
+    const posOf = (id) => screenPos.get(id) || atomById(id);
+
     const defs = el('defs', {});
     layer.appendChild(defs);
     const blurId = 'cloud-blur';
@@ -744,13 +749,14 @@
       const gradId = `cloud-atom-${a.id}`;
       radialBlob(gradId, color, pull > 0.2 ? 0.85 : 0.6);
       const R = info.r + 14 + d.nonbonding * 5 + Math.abs(pull) * 9;
-      cloudGroup.appendChild(el('circle', { cx: a.x, cy: a.y, r: R, fill: `url(#${gradId})` }));
+      const p = posOf(a.id);
+      cloudGroup.appendChild(el('circle', { cx: p.x, cy: p.y, r: R, fill: `url(#${gradId})` }));
       // 90% 機率邊界(參考虛線圈,畫在模糊層外面才看得清楚)
       layer.appendChild(
-        el('circle', { cx: a.x, cy: a.y, r: R * 1.15, fill: 'none', stroke: color, 'stroke-width': 1, 'stroke-dasharray': '3,5', 'stroke-opacity': 0.4 })
+        el('circle', { cx: p.x, cy: p.y, r: R * 1.15, fill: 'none', stroke: color, 'stroke-width': 1, 'stroke-dasharray': '3,5', 'stroke-opacity': 0.4 })
       );
       if (pull > 0.2 || pull < -0.2) {
-        const lp = polar(a.x, a.y, R + 16, 135);
+        const lp = polar(p.x, p.y, R + 16, 135);
         const t = el('text', { x: lp.x, y: lp.y, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 700, fill: color });
         t.textContent = pull > 0 ? 'δ−' : 'δ+';
         layer.appendChild(t);
@@ -760,12 +766,13 @@
       // 鍵中間補一顆軟球,讓兩個原子的雲在鍵上連成一片(不會斷開)
       const a1 = atomById(b.a);
       const a2 = atomById(b.b);
+      const p1 = posOf(b.a), p2 = posOf(b.b);
       const dEN = ELEMENTS[a2.el].en - ELEMENTS[a1.el].en;
       const midColor = Math.abs(dEN) >= 0.4 ? (dEN > 0 ? CLOUD_RED : CLOUD_BLUE) : CLOUD_NEUTRAL;
-      const mx = (a1.x + a2.x) / 2, my = (a1.y + a2.y) / 2;
+      const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
       const gradId = `cloud-bond-${b.a}-${b.b}`;
       radialBlob(gradId, midColor, 0.55);
-      const R = Math.hypot(a2.x - a1.x, a2.y - a1.y) / 2 + 16 + 4 * b.order;
+      const R = Math.hypot(p2.x - p1.x, p2.y - p1.y) / 2 + 16 + 4 * b.order;
       cloudGroup.appendChild(el('circle', { cx: mx, cy: my, r: R, fill: `url(#${gradId})` }));
     });
     layer.appendChild(cloudGroup);
@@ -774,10 +781,11 @@
     bonds.forEach((b) => {
       const a1 = atomById(b.a);
       const a2 = atomById(b.b);
+      const p1 = posOf(b.a), p2 = posOf(b.b);
       const dEN = ELEMENTS[a2.el].en - ELEMENTS[a1.el].en; // >0:a2 是 δ−
       const polarBond = Math.abs(dEN) >= 0.4;
-      const dx = a2.x - a1.x;
-      const dy = a2.y - a1.y;
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
       const len = Math.hypot(dx, dy) || 1;
       const ux = dx / len;
       const uy = dy / len;
@@ -785,30 +793,40 @@
       const py = ux;
       // 鍵偶極箭頭(δ+ ⊕→ δ−)
       if (polarBond) {
-        const mx = (a1.x + a2.x) / 2 + px * 30;
-        const my = (a1.y + a2.y) / 2 + py * 30;
+        const mx = (p1.x + p2.x) / 2 + px * 30;
+        const my = (p1.y + p2.y) / 2 + py * 30;
         const dir = dEN > 0 ? 1 : -1;
         drawArrow(layer, mx - ux * 16 * dir, my - uy * 16 * dir, mx + ux * 16 * dir, my + uy * 16 * dir, '#495057', 1.6, true);
       }
     });
-    // 每個分子的淨偶極
+    // 每個分子的淨偶極(用目前實際畫面上的座標重新算方向,跟著旋轉/振動走)
     components().forEach((comp) => {
       if (comp.length < 2) return;
-      const dip = dipoleOf(comp);
-      const cx = comp.reduce((s, a) => s + a.x, 0) / comp.length;
-      const cy = comp.reduce((s, a) => s + a.y, 0) / comp.length;
-      const topY = Math.min(...comp.map((a) => a.y)) - 52;
-      if (dip.mag >= 0.35) {
-        const ux = dip.x / dip.mag;
-        const uy = dip.y / dip.mag;
-        const L2 = 26 + Math.min(30, dip.mag * 14);
+      const ids = new Set(comp.map((a) => a.id));
+      let vx = 0, vy = 0;
+      bonds.forEach((b) => {
+        if (!ids.has(b.a)) return;
+        const a1 = atomById(b.a), a2 = atomById(b.b);
+        const p1 = posOf(b.a), p2 = posOf(b.b);
+        const dEN = ELEMENTS[a2.el].en - ELEMENTS[a1.el].en;
+        const d = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+        vx += ((p2.x - p1.x) / d) * dEN * b.order;
+        vy += ((p2.y - p1.y) / d) * dEN * b.order;
+      });
+      const mag = Math.hypot(vx, vy);
+      const cx = comp.reduce((s, a) => s + posOf(a.id).x, 0) / comp.length;
+      const cy = comp.reduce((s, a) => s + posOf(a.id).y, 0) / comp.length;
+      const topY = Math.min(...comp.map((a) => posOf(a.id).y)) - 52;
+      if (mag >= 0.35) {
+        const ux = vx / mag;
+        const uy = vy / mag;
+        const L2 = 26 + Math.min(30, mag * 14);
         drawArrow(layer, cx - ux * L2, cy - uy * L2, cx + ux * L2, cy + uy * L2, '#e8940a', 2.6, true);
         const t = el('text', { x: cx, y: topY, 'text-anchor': 'middle', 'font-size': 12.5, 'font-weight': 700, fill: '#e8940a' });
         t.textContent = '淨偶極 μ ≠ 0 → 極性分子';
         layer.appendChild(t);
       } else {
         const anyPolarBond = bonds.some((b) => {
-          const ids = new Set(comp.map((a) => a.id));
           if (!ids.has(b.a)) return false;
           return Math.abs(ELEMENTS[atomById(b.a).el].en - ELEMENTS[atomById(b.b).el].en) >= 0.4;
         });
@@ -1272,6 +1290,22 @@
       y: a.y + (mode ? mode.disp[i].y * amp : 0),
       z: a.z + (mode ? mode.disp[i].z * amp : 0),
     }));
+  }
+
+  // 已最佳化鎖定的原子,目前應該畫在畫布上的哪個位置(套用 3D 旋轉投影後的螢幕座標)。
+  // 電子雲、偶極箭頭等所有疊加圖層都要用這份座標,否則旋轉/振動時會跟看得到的原子分家。
+  function rigidScreenPositions() {
+    const map = new Map();
+    if (!mol3D) return map;
+    const slot = rigidSlotOf.get(mol3D.atoms[0]?.id) || { cx: STAGE_W / 2, cy: STAGE_H / 2, scale: 130 };
+    let maxR = 1;
+    mol3D.atoms.forEach((a) => { maxR = Math.max(maxR, Math.hypot(a.x, a.y, a.z) + 0.35); });
+    const scale = slot.scale / maxR;
+    mol3DLivePositions().forEach((a) => {
+      const proj = project3D(a);
+      map.set(a.id, { x: slot.cx + proj.x * scale, y: slot.cy - proj.y * scale, z: proj.z, scale });
+    });
+    return map;
   }
 
   // 把最佳化完成的分子畫成可拖曳旋轉的真實立體球棍圖,直接疊在主畫布上
