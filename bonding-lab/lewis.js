@@ -9,6 +9,9 @@
     C: { valence: 4, orb: 4, color: '#d6d6d6', r: 30, name: '碳', en: 2.55, mass: 12.011 },
     N: { valence: 5, orb: 4, color: '#a8e6b8', r: 30, name: '氮', en: 3.04, mass: 14.007 },
     O: { valence: 6, orb: 4, color: '#f5abc9', r: 30, name: '氧', en: 3.44, mass: 15.999 },
+    // orb=6:硫可以擴張八隅體(expanded octet),讓 H2SO4 的 S 能同時跟 4 個 O 成鍵仍「滿足」
+    S: { valence: 6, orb: 6, color: '#f2d24b', r: 33, name: '硫', en: 2.58, mass: 32.06 },
+    Cl: { valence: 7, orb: 4, color: '#8fd14f', r: 30, name: '氯', en: 3.16, mass: 35.45 },
   };
 
   // 把十六進位色碼加深/加亮 amt(-255~255),用來做原子球的光澤漸層
@@ -42,6 +45,11 @@
   setBP('N', 'N', 3, 1.1, 22.4);
   setBP('O', 'O', 1, 1.48, 3.8);
   setBP('O', 'O', 2, 1.21, 11.4);
+  setBP('N', 'O', 1, 1.41, 5.4);
+  setBP('N', 'O', 2, 1.21, 11.2);
+  setBP('S', 'O', 1, 1.57, 4.5);
+  setBP('S', 'O', 2, 1.42, 9.8);
+  setBP('Cl', 'H', 1, 1.27, 4.8);
   function bondParams(e1, e2, order) {
     return BOND_PARAMS[[e1, e2].sort().join('') + '-' + order] || { len: 1.4, k: 4.5 };
   }
@@ -61,6 +69,13 @@
     { key: 'C1O2', label: 'CO₂ 二氧化碳' },
     { key: 'H2O2', label: 'H₂O₂ 過氧化氫' },
     { key: 'C1H2O1', label: 'CH₂O 甲醛' },
+    { key: 'C7H8', label: 'C₇H₈ 甲苯' },
+    { key: 'C6H6', label: 'C₆H₆ 苯' },
+    { key: 'H2O4S1', label: 'H₂SO₄ 硫酸' },
+    { key: 'H1Cl1', label: 'HCl 氯化氫' },
+    { key: 'H1N1O3', label: 'HNO₃ 硝酸' },
+    { key: 'C1H4O1', label: 'CH₃OH 甲醇' },
+    { key: 'C2H6O1', label: 'C₂H₅OH 乙醇' },
   ];
 
   // 一鍵生成:原子種類 + 鍵結列表 [原子索引a, 原子索引b, 鍵級]
@@ -75,6 +90,39 @@
     C1O2: { els: ['C', 'O', 'O'], bonds: [[0, 1, 2], [0, 2, 2]] },
     H2O2: { els: ['O', 'O', 'H', 'H'], bonds: [[0, 1, 1], [0, 2, 1], [1, 3, 1]] },
     C1H2O1: { els: ['C', 'H', 'H', 'O'], bonds: [[0, 1, 1], [0, 2, 1], [0, 3, 2]] },
+    // 苯環用交錯的 Kekule 單/雙鍵表示(不是真的均勻鍵長)——這其實是很好的教材:
+    // 這樣畫出來的六邊形鍵長會忽長忽短,但苯環實測是均勻的 1.39 Å,
+    // 這個「理論預測跟實測不符」正是共振/離域結構存在的直接證據。
+    C6H6: {
+      els: ['C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'],
+      bonds: [[0, 1, 2], [1, 2, 1], [2, 3, 2], [3, 4, 1], [4, 5, 2], [5, 0, 1], [0, 6, 1], [1, 7, 1], [2, 8, 1], [3, 9, 1], [4, 10, 1], [5, 11, 1]],
+    },
+    // 甲苯 = 苯環 + 對位裝上一根 CH3(索引 0 的苯環碳不接 H,改接甲基碳 6)
+    C7H8: {
+      els: ['C', 'C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'],
+      bonds: [
+        [0, 1, 2], [1, 2, 1], [2, 3, 2], [3, 4, 1], [4, 5, 2], [5, 0, 1],
+        [0, 6, 1], [6, 7, 1], [6, 8, 1], [6, 9, 1],
+        [1, 10, 1], [2, 11, 1], [3, 12, 1], [4, 13, 1], [5, 14, 1],
+      ],
+    },
+    // 硫可以擴張八隅體(orb=6),讓 S 同時跟 4 個 O 成鍵仍完全滿足、形式電荷全為 0
+    H2O4S1: {
+      els: ['S', 'O', 'H', 'O', 'H', 'O', 'O'],
+      bonds: [[0, 1, 1], [1, 2, 1], [0, 3, 1], [3, 4, 1], [0, 5, 2], [0, 6, 2]],
+    },
+    H1Cl1: { els: ['H', 'Cl'], bonds: [[0, 1, 1]] },
+    // 硝酸的正確路易斯結構需要 N(+1)/一個 O(−1)的共振形式(N 才能維持八隅體不擴張)——
+    // 用 electrons 覆寫初始價電子數,才能讓形式電荷自然算出 +1/−1,整體仍中性
+    H1N1O3: {
+      els: [{ el: 'N', electrons: 4 }, 'O', 'H', 'O', { el: 'O', electrons: 7 }],
+      bonds: [[0, 1, 1], [1, 2, 1], [0, 3, 2], [0, 4, 1]],
+    },
+    C1H4O1: { els: ['C', 'H', 'H', 'H', 'O', 'H'], bonds: [[0, 1, 1], [0, 2, 1], [0, 3, 1], [0, 4, 1], [4, 5, 1]] },
+    C2H6O1: {
+      els: ['C', 'C', 'H', 'H', 'H', 'H', 'H', 'O', 'H'],
+      bonds: [[0, 1, 1], [0, 2, 1], [0, 3, 1], [0, 4, 1], [1, 5, 1], [1, 6, 1], [1, 7, 1], [7, 8, 1]],
+    },
   };
 
   let atoms = [];
@@ -86,6 +134,7 @@
   let trashHover = false;
   let cloudOn = false;
   let optimizing = false;
+  let buildGen = 0; // 每次 clearAll/換分子都會遞增;舊的最佳化動畫迴圈發現世代對不上就自我中止,避免跟新分子的畫面疊在一起
   const rigidAtoms = new Set(); // 最佳化後鎖定的原子:只能整顆分子一起移動,不可再斷鍵
   const rigidSlotOf = new Map(); // atomId -> {cx,cy,scale}:這顆原子所屬分子在畫布上的中心與縮放,3D 投影用
   const TRASH = { x: STAGE_W - 54, y: STAGE_H - 54, r: 32 };
@@ -217,11 +266,15 @@
     if (!spec) return;
     clearAll();
     const cx = STAGE_W / 2, cy = STAGE_H / 2;
-    const newIds = spec.els.map((elKey, i) => {
+    const newIds = spec.els.map((entry, i) => {
+      // 大多數原子預設用中性價電子數;少數需要共振形式電荷的分子(如 HNO3 的 N/O)
+      // 可以用 {el, electrons} 覆寫初始電子數,讓形式電荷自然算出正確的 +1/−1
+      const elKey = typeof entry === 'string' ? entry : entry.el;
       const info = ELEMENTS[elKey];
+      const electrons = typeof entry === 'string' ? info.valence : entry.electrons ?? info.valence;
       const angle = (i / spec.els.length) * 2 * Math.PI;
       const id = nextId++;
-      atoms.push({ id, el: elKey, x: cx + Math.cos(angle) * 70, y: cy + Math.sin(angle) * 70, electrons: info.valence });
+      atoms.push({ id, el: elKey, x: cx + Math.cos(angle) * 70, y: cy + Math.sin(angle) * 70, electrons });
       return id;
     });
     spec.bonds.forEach(([i, j, order]) => {
@@ -376,6 +429,8 @@
   }
 
   function clearAll() {
+    buildGen++; // 讓任何還在跑的舊最佳化/振動迴圈作廢,不會跟接下來要畫的新分子搶畫面
+    optimizing = false;
     atoms = [];
     bonds = [];
     selectedId = null;
@@ -543,11 +598,13 @@
       return;
     }
     optimizing = true;
+    const myGen = buildGen; // 記住這輪最佳化屬於哪個世代;中途若換了分子(世代變了)就自我中止
     const btn = document.getElementById('btn-optimize');
     btn.disabled = true;
     const E0 = relaxPass(false, 0);
     const t0 = performance.now();
     const frame = () => {
+      if (myGen !== buildGen) return; // 使用者已經換分子/清空畫布,這個舊迴圈不該再動手
       for (let i = 0; i < 6; i++) relaxPass(true, 1);
       render();
       const E = relaxPass(false, 0);
@@ -958,6 +1015,147 @@
       nbIds.get(b.a).push(b.b);
       nbIds.get(b.b).push(b.a);
     });
+
+    function norm(v) {
+      const n = Math.hypot(v.x, v.y, v.z) || 1;
+      return { x: v.x / n, y: v.y / n, z: v.z / n };
+    }
+    function sub(a, b) {
+      return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+    }
+    function dot(a, b) {
+      return a.x * b.x + a.y * b.y + a.z * b.z;
+    }
+    function cross(a, b) {
+      return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x };
+    }
+    function orderBetween(i, j) {
+      const b = bonds.find((bb) => (bb.a === i && bb.b === j) || (bb.a === j && bb.b === i));
+      return b ? b.order : 1;
+    }
+
+    // ---- 環偵測(DFS 找 back-edge)----
+    // 每個原子只看得到自己的鄰居,靠純局部的電子群排斥沒辦法保證「整個環」收斂成平面、
+    // 每個角都對——實測過:苯環用隨機起點跑,角度會卡在一個扭曲的錯誤形狀,不會自動變 120°。
+    function findRings() {
+      const visited = new Set();
+      const stack = [];
+      const stackSet = new Set();
+      const rings = [];
+      function dfs(id, parent) {
+        visited.add(id);
+        stack.push(id);
+        stackSet.add(id);
+        for (const nb of nbIds.get(id)) {
+          if (nb === parent) continue;
+          if (stackSet.has(nb)) {
+            const idx = stack.indexOf(nb);
+            rings.push(stack.slice(idx));
+          } else if (!visited.has(nb)) {
+            dfs(nb, id);
+          }
+        }
+        stack.pop();
+        stackSet.delete(id);
+      }
+      atoms.forEach((a) => {
+        if (!visited.has(a.id)) dfs(a.id, -1);
+      });
+      return rings;
+    }
+
+    // 環形結構(如苯環)直接用解析幾何排出正確的平面多邊形當起點(每個頂點內角 120°,
+    // 交錯的 Kekule 單/雙鍵長度依然能精確閉合——這是真的幾何,不是近似):
+    // 環上每個原子唯一的「環外」取代基(苯環的 H、甲苯 ipso 碳的甲基)也一併排在
+    // 外角平分線方向,不然它們從隨機點出發,前幾步就會把排好的環又拉歪。
+    const ringGroups = findRings();
+    const ringSeeded = new Set(); // 已經用解析幾何精準排好的原子(環本身+環上直接的取代基),BFS 補位時不能重排這些
+    ringGroups.forEach((ring) => {
+      const n = ring.length;
+      const pts2d = [{ u: 0, v: 0 }];
+      let dir = 0;
+      for (let i = 0; i < n - 1; i++) {
+        const elA = atoms.find((a) => a.id === ring[i]).el, elB = atoms.find((a) => a.id === ring[i + 1]).el;
+        const len = bondParams(elA, elB, orderBetween(ring[i], ring[i + 1])).len;
+        const last = pts2d[pts2d.length - 1];
+        pts2d.push({ u: last.u + len * Math.cos((dir * Math.PI) / 180), v: last.v + len * Math.sin((dir * Math.PI) / 180) });
+        dir += 60; // 外角 60°(內角 120°),sp2 三個電子群的自然夾角
+      }
+      const rz = norm({ x: Math.random() - 0.5, y: Math.random() - 0.5, z: Math.random() - 0.5 });
+      let seed0 = { x: 1, y: 0, z: 0 };
+      if (Math.abs(dot(seed0, rz)) > 0.9) seed0 = { x: 0, y: 1, z: 0 };
+      const uy = norm(cross(rz, seed0));
+      const ux = norm(cross(uy, rz));
+      const cu = pts2d.reduce((s, p) => s + p.u, 0) / n;
+      const cv = pts2d.reduce((s, p) => s + p.v, 0) / n;
+      ring.forEach((id, i) => {
+        const p = byId.get(id);
+        const u = pts2d[i].u - cu, v = pts2d[i].v - cv;
+        p.x = u * ux.x + v * uy.x;
+        p.y = u * ux.y + v * uy.y;
+        p.z = u * ux.z + v * uy.z;
+        ringSeeded.add(id);
+      });
+      ring.forEach((id, i) => {
+        const prevId = ring[(i - 1 + n) % n], nextId = ring[(i + 1) % n];
+        const others = nbIds.get(id).filter((x) => x !== prevId && x !== nextId);
+        if (others.length !== 1) return;
+        const c = byId.get(id), p1 = byId.get(prevId), p2 = byId.get(nextId);
+        const v1 = norm(sub(p1, c)), v2 = norm(sub(p2, c));
+        const bis = norm({ x: -(v1.x + v2.x), y: -(v1.y + v2.y), z: -(v1.z + v2.z) });
+        const subId = others[0];
+        const len = bondParams(c.el, byId.get(subId).el, orderBetween(id, subId)).len;
+        const sp = byId.get(subId);
+        sp.x = c.x + bis.x * len;
+        sp.y = c.y + bis.y * len;
+        sp.z = c.z + bis.z * len;
+        ringSeeded.add(subId);
+      });
+    });
+
+    // 環外的取代基如果自己還有更多鄰居(如甲苯環上接的甲基,甲基又接 3 個 H),
+    // 那些原子還是隨機起點——而它們會透過每步的電子群排斥「回頭」牽動已經排好的環
+    // (實測證實:甲苯的環角度會被牽歪)。用 BFS 從已排好的原子往外,把還沒排的鄰居
+    // 用簡單的錐形(粗略 109.5°)接力擺出合理起始位置,讓整個分子從一開始就接近解,
+    // 不再只靠純隨機。
+    if (ringGroups.length) {
+      const placed = new Set(ringSeeded);
+      const queue = [...placed];
+      while (queue.length) {
+        const id = queue.shift();
+        const c = byId.get(id);
+        const placedNbrs = nbIds.get(id).filter((nb) => placed.has(nb));
+        const unplacedNbrs = nbIds.get(id).filter((nb) => !placed.has(nb));
+        if (unplacedNbrs.length === 0) continue;
+        // axis 指向「已知鄰居」那個方向,新鍵跟它的夾角才會是真正的四面體角(109.5°)——
+        // 之前寫反方向(指向遠離已知鄰居)會讓新原子擠到只離已知鍵 70.5° 的錯誤位置
+        const axis =
+          placedNbrs.length > 0
+            ? norm(sub(byId.get(placedNbrs[0]), c))
+            : norm({ x: Math.random() - 0.5, y: Math.random() - 0.5, z: Math.random() - 0.5 });
+        let seed0 = { x: 1, y: 0, z: 0 };
+        if (Math.abs(dot(seed0, axis)) > 0.9) seed0 = { x: 0, y: 1, z: 0 };
+        const uy = norm(cross(axis, seed0));
+        const ux = norm(cross(uy, axis));
+        const coneAngle = (109.5 * Math.PI) / 180;
+        unplacedNbrs.forEach((nbId, i) => {
+          const az = (i / unplacedNbrs.length) * 2 * Math.PI;
+          const dir = {
+            x: axis.x * Math.cos(coneAngle) + Math.sin(coneAngle) * (ux.x * Math.cos(az) + uy.x * Math.sin(az)),
+            y: axis.y * Math.cos(coneAngle) + Math.sin(coneAngle) * (ux.y * Math.cos(az) + uy.y * Math.sin(az)),
+            z: axis.z * Math.cos(coneAngle) + Math.sin(coneAngle) * (ux.z * Math.cos(az) + uy.z * Math.sin(az)),
+          };
+          const len = bondParams(c.el, byId.get(nbId).el, orderBetween(id, nbId)).len;
+          const p = byId.get(nbId);
+          p.x = c.x + dir.x * len;
+          p.y = c.y + dir.y * len;
+          p.z = c.z + dir.z * len;
+          placed.add(nbId);
+          queue.push(nbId);
+        });
+      }
+    }
+
     const phantoms = new Map();
     atoms.forEach((a) => {
       const n = lonePairCountFor(a);
@@ -970,19 +1168,11 @@
       phantoms.set(a.id, arr);
     });
 
-    function norm(v) {
-      const n = Math.hypot(v.x, v.y, v.z) || 1;
-      return { x: v.x / n, y: v.y / n, z: v.z / n };
-    }
-    function sub(a, b) {
-      return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
-    }
-    function dot(a, b) {
-      return a.x * b.x + a.y * b.y + a.z * b.z;
-    }
-
-    // 立體互斥的排除表:1-2(直接鍵結)與 1-3(同一中心的兩個鄰居)不算立體障礙,
-    // 剩下的原子對(1-4 以上,或不同分子)才吃 van der Waals 短距互斥
+    // 立體互斥的排除表:1-2(直接鍵結)與 1-3(同一中心的兩個鄰居)不算立體障礙。
+    // 兩個中心的取代基數不對稱時(如甲醇的 O 只接 1 個 H、C 接 3 個 H)也整組排除——
+    // 實測過:不對稱時徑向推擠會把四面體角度弄壞,只有對稱(如乙烷 3 對 3)才會
+    // 自然轉成交錯式而不傷角度。同一個環(以及環上的取代基)也整組排除,
+    // 苯環是剛性平面,不需要立體推擠,加了反而會把 120° 弄歪。
     const pairKey = (i, j) => (i < j ? `${i}-${j}` : `${j}-${i}`);
     const stericExcluded = new Set();
     bonds.forEach((b) => stericExcluded.add(pairKey(b.a, b.b)));
@@ -990,6 +1180,22 @@
       const nb = nbIds.get(c.id);
       for (let i = 0; i < nb.length; i++)
         for (let j = i + 1; j < nb.length; j++) stericExcluded.add(pairKey(nb[i], nb[j]));
+    });
+    bonds.forEach((b) => {
+      const nbA = nbIds.get(b.a).filter((id) => id !== b.b);
+      const nbB = nbIds.get(b.b).filter((id) => id !== b.a);
+      if (nbA.length === 0 || nbB.length === 0 || nbA.length === nbB.length) return;
+      nbA.forEach((ia) => nbB.forEach((ib) => stericExcluded.add(pairKey(ia, ib))));
+    });
+    ringGroups.forEach((ring) => {
+      const related = new Set(ring);
+      ring.forEach((id) => nbIds.get(id).forEach((nb) => related.add(nb)));
+      // 環外的取代基本身也可能還有自己的取代基(如甲苯的環上接甲基,甲基又接 3 個 H)——
+      // 這些「孫輩」原子也要一起排除,不然甲基的 H 對環的立體推擠一樣會把 120° 弄歪
+      [...related].forEach((id) => nbIds.get(id).forEach((nb) => related.add(nb)));
+      const list = [...related];
+      for (let i = 0; i < list.length; i++)
+        for (let j = i + 1; j < list.length; j++) stericExcluded.add(pairKey(list[i], list[j]));
     });
     const STERIC_R = { H: 1.3, C: 1.45, N: 1.42, O: 1.38 }; // 近似 vdW 半徑(Å)
 
@@ -1711,7 +1917,7 @@
     return counts;
   }
   function formulaKey(counts) {
-    return ['C', 'H', 'N', 'O']
+    return ['C', 'H', 'N', 'O', 'S', 'Cl']
       .filter((e) => counts[e])
       .map((e) => e + counts[e])
       .join('');
@@ -1735,14 +1941,17 @@
 
   function formulaDisplay(counts) {
     if (counts.O === 1 && counts.H === 1 && !counts.C && !counts.N) return 'OH';
-    return ['C', 'N', 'H', 'O']
+    return ['C', 'N', 'H', 'O', 'S', 'Cl']
       .filter((e) => counts[e])
       .map((e) => e + (counts[e] > 1 ? sub(counts[e]) : ''))
       .join('');
   }
 
   function updatePanels() {
-    // 目標分子勾選
+    // 目標分子勾選:每次都用「畫布上目前實際有的分子」重新算,不能只累加不清除——
+    // 否則換一顆分子之後,之前組過的舊分子仍然亮著綠色勾勾,好幾個按鈕同時「完成」,
+    // 容易誤以為畫面上同時有好幾顆分子疊在一起。
+    doneTargets.clear();
     const comps = components();
     comps.forEach((comp) => {
       if (comp.length < 2) return;
