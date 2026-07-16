@@ -11,6 +11,16 @@
     O: { valence: 6, orb: 4, color: '#f5abc9', r: 30, name: '氧', en: 3.44, mass: 15.999 },
   };
 
+  // 把十六進位色碼加深/加亮 amt(-255~255),用來做原子球的光澤漸層
+  function shade(hex, amt) {
+    const num = parseInt(hex.slice(1), 16);
+    const clamp = (v) => Math.max(0, Math.min(255, v));
+    const r = clamp((num >> 16) + amt);
+    const g = clamp(((num >> 8) & 0xff) + amt);
+    const b = clamp((num & 0xff) + amt);
+    return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+  }
+
   // ---- 真實鍵長(Å)與 GVFF 近似力常數(mdyn/Å),供 3D 結構與振動計算使用 ----
   const BOND_PARAMS = {};
   function setBP(e1, e2, order, len, k) {
@@ -683,11 +693,21 @@
     return { x: vx, y: vy, mag: Math.hypot(vx, vy) };
   }
 
-  // ---- 價電子雲(海綿/棉花狀模糊電子密度表面) ----
+  // ---- 價電子雲(仿靜電位能表面 ESP surface 的彩虹色階) ----
 
-  const CLOUD_RED = '#e03131'; // δ−(電子密度高)
-  const CLOUD_BLUE = '#3b82f6'; // δ+(電子密度低)
-  const CLOUD_NEUTRAL = '#5c7cfa';
+  // 真正的 ESP(靜電位能)表面慣例:電子密度高(δ−)→紅,居中→綠,電子密度低(δ+)→藍。
+  // t 為 -1~1 的正規化拉力值。用固定刻度(不是每個分子各自的最大值)校準,
+  // 這樣同樣程度的電負度差在不同分子之間顏色才會一致(例如 CO2 的 O 不會因為 C 同時接兩根雙鍵而被稀釋成黃綠色)。
+  const PULL_NORM = 1.8;
+  function espColor(t) {
+    const clamped = Math.max(-1, Math.min(1, t));
+    const hue = 120 * (1 - clamped); // t=+1(δ−極端)→0°紅;t=0→120°綠;t=-1(δ+極端)→240°藍
+    const light = 50 - 6 * Math.abs(clamped);
+    return `hsl(${hue.toFixed(0)}, 90%, ${light.toFixed(0)}%)`;
+  }
+  function espColorMix(t1, t2, frac) {
+    return espColor(t1 + (t2 - t1) * frac);
+  }
 
   function drawArrow(layer, x1, y1, x2, y2, color, width, withCross) {
     layer.appendChild(el('line', { x1, y1, x2, y2, stroke: color, 'stroke-width': width }));
@@ -724,19 +744,20 @@
     // 電子雲、偶極箭頭一定要用這份「目前實際畫在哪裡」的座標,才不會跟看得到的原子分家。
     const screenPos = rigidScreenPositions();
     const posOf = (id) => screenPos.get(id) || atomById(id);
+    const tOf = (a) => Math.max(-1, Math.min(1, pullOf(a) / PULL_NORM));
 
     const defs = el('defs', {});
     layer.appendChild(defs);
     const blurId = 'cloud-blur';
     const filter = el('filter', { id: blurId, x: '-80%', y: '-80%', width: '260%', height: '260%' });
-    filter.appendChild(el('feGaussianBlur', { stdDeviation: 6 }));
+    filter.appendChild(el('feGaussianBlur', { stdDeviation: 4.5 }));
     defs.appendChild(filter);
     const cloudGroup = el('g', { filter: `url(#${blurId})` });
 
     function radialBlob(id, color, opacity) {
       const rg = el('radialGradient', { id, cx: '50%', cy: '50%', r: '50%' });
       rg.appendChild(el('stop', { offset: '0%', 'stop-color': color, 'stop-opacity': opacity }));
-      rg.appendChild(el('stop', { offset: '55%', 'stop-color': color, 'stop-opacity': opacity * 0.6 }));
+      rg.appendChild(el('stop', { offset: '62%', 'stop-color': color, 'stop-opacity': opacity * 0.85 }));
       rg.appendChild(el('stop', { offset: '100%', 'stop-color': color, 'stop-opacity': 0 }));
       defs.appendChild(rg);
     }
@@ -744,36 +765,45 @@
     atoms.forEach((a) => {
       const info = ELEMENTS[a.el];
       const d = derived(a);
-      const pull = pullOf(a);
-      const color = pull > 0.2 ? CLOUD_RED : pull < -0.2 ? CLOUD_BLUE : CLOUD_NEUTRAL;
+      const tv = tOf(a);
+      const color = espColor(tv);
       const gradId = `cloud-atom-${a.id}`;
-      radialBlob(gradId, color, pull > 0.2 ? 0.85 : 0.6);
-      const R = info.r + 14 + d.nonbonding * 5 + Math.abs(pull) * 9;
+      radialBlob(gradId, color, 0.94);
+      const R = info.r + 22 + d.nonbonding * 6 + Math.abs(tv) * 14;
       const p = posOf(a.id);
       cloudGroup.appendChild(el('circle', { cx: p.x, cy: p.y, r: R, fill: `url(#${gradId})` }));
       // 90% 機率邊界(參考虛線圈,畫在模糊層外面才看得清楚)
       layer.appendChild(
-        el('circle', { cx: p.x, cy: p.y, r: R * 1.15, fill: 'none', stroke: color, 'stroke-width': 1, 'stroke-dasharray': '3,5', 'stroke-opacity': 0.4 })
+        el('circle', { cx: p.x, cy: p.y, r: R * 1.15, fill: 'none', stroke: color, 'stroke-width': 1, 'stroke-dasharray': '3,5', 'stroke-opacity': 0.45 })
       );
+      const pull = pullOf(a);
       if (pull > 0.2 || pull < -0.2) {
         const lp = polar(p.x, p.y, R + 20, 135);
-        const t = el('text', { x: lp.x, y: lp.y, 'text-anchor': 'middle', 'font-size': 19, 'font-weight': 800, fill: color });
-        t.textContent = pull > 0 ? 'δ−' : 'δ+';
-        layer.appendChild(t);
+        const labelEl = el('text', { x: lp.x, y: lp.y, 'text-anchor': 'middle', 'font-size': 19, 'font-weight': 800, fill: color });
+        labelEl.textContent = pull > 0 ? 'δ−' : 'δ+';
+        layer.appendChild(labelEl);
       }
     });
     bonds.forEach((b) => {
-      // 鍵中間補一顆軟球,讓兩個原子的雲在鍵上連成一片(不會斷開)
+      // 鍵中間補一顆軟球,讓兩個原子的雲在鍵上連成一片(不會斷開),顏色沿彩虹色階漸變
       const a1 = atomById(b.a);
       const a2 = atomById(b.b);
       const p1 = posOf(b.a), p2 = posOf(b.b);
-      const dEN = ELEMENTS[a2.el].en - ELEMENTS[a1.el].en;
-      const midColor = Math.abs(dEN) >= 0.4 ? (dEN > 0 ? CLOUD_RED : CLOUD_BLUE) : CLOUD_NEUTRAL;
+      const midColor = espColorMix(tOf(a1), tOf(a2), 0.5);
       const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
       const gradId = `cloud-bond-${b.a}-${b.b}`;
-      radialBlob(gradId, midColor, 0.55);
-      const R = Math.hypot(p2.x - p1.x, p2.y - p1.y) / 2 + 16 + 4 * b.order;
+      radialBlob(gradId, midColor, 0.8);
+      const R = Math.hypot(p2.x - p1.x, p2.y - p1.y) / 2 + 20 + 5 * b.order;
       cloudGroup.appendChild(el('circle', { cx: mx, cy: my, r: R, fill: `url(#${gradId})` }));
+      // 鍵上四分之一/四分之三處再各補一顆較小的球,讓色階過渡更連續平滑(仿真正 ESP 表面的漸層)
+      [0.25, 0.75].forEach((frac) => {
+        const qx = p1.x + (p2.x - p1.x) * frac;
+        const qy = p1.y + (p2.y - p1.y) * frac;
+        const qColor = espColorMix(tOf(a1), tOf(a2), frac);
+        const qGradId = `cloud-bondq-${b.a}-${b.b}-${frac}`;
+        radialBlob(qGradId, qColor, 0.7);
+        cloudGroup.appendChild(el('circle', { cx: qx, cy: qy, r: R * 0.72, fill: `url(#${qGradId})` }));
+      });
     });
     layer.appendChild(cloudGroup);
 
@@ -1321,6 +1351,26 @@
     const positions = live.map((a) => ({ ...a, proj: project3D(a) }));
     const byId = new Map(positions.map((p) => [p.id, p]));
 
+    // 每種元素各準備一顆「玻璃彈珠」光澤漸層(左上有亮點、右下加深),讓球看起來立體發亮
+    const defs = el('defs', {});
+    layer.appendChild(defs);
+    Object.keys(ELEMENTS).forEach((elSym) => {
+      const base = ELEMENTS[elSym].color;
+      const rg = el('radialGradient', { id: `glossy-${elSym}`, cx: '32%', cy: '28%', r: '78%' });
+      rg.appendChild(el('stop', { offset: '0%', 'stop-color': shade(base, 190) }));
+      rg.appendChild(el('stop', { offset: '16%', 'stop-color': shade(base, 90) }));
+      rg.appendChild(el('stop', { offset: '48%', 'stop-color': base }));
+      rg.appendChild(el('stop', { offset: '80%', 'stop-color': shade(base, -55) }));
+      rg.appendChild(el('stop', { offset: '100%', 'stop-color': shade(base, -110) }));
+      defs.appendChild(rg);
+    });
+    const highlightId = 'glossy-highlight';
+    const hg = el('radialGradient', { id: highlightId, cx: '50%', cy: '50%', r: '50%' });
+    hg.appendChild(el('stop', { offset: '0%', 'stop-color': '#ffffff', 'stop-opacity': 1 }));
+    hg.appendChild(el('stop', { offset: '60%', 'stop-color': '#ffffff', 'stop-opacity': 0.5 }));
+    hg.appendChild(el('stop', { offset: '100%', 'stop-color': '#ffffff', 'stop-opacity': 0 }));
+    defs.appendChild(hg);
+
     const items = [];
     mol3D.bonds.forEach((b) => {
       const p1 = byId.get(b.a), p2 = byId.get(b.b);
@@ -1350,7 +1400,12 @@
         const depthScale = 1 + a.proj.z * (0.9 / maxR) * 0.15;
         const r = info.r * 0.78 * depthScale;
         const x = slot.cx + a.proj.x * scale, y = slot.cy - a.proj.y * scale;
-        layer.appendChild(el('circle', { cx: x, cy: y, r, fill: info.color, stroke: '#555', 'stroke-width': 1.6 }));
+        // 主球體:玻璃彈珠光澤漸層(左上亮、右下深)
+        layer.appendChild(el('circle', { cx: x, cy: y, r, fill: `url(#glossy-${a.el})`, stroke: shade(info.color, -90), 'stroke-width': 1.6 }));
+        // 高光反射點,疊在球體左上方,做出打光的亮面感
+        layer.appendChild(
+          el('ellipse', { cx: x - r * 0.36, cy: y - r * 0.4, rx: r * 0.46, ry: r * 0.32, fill: `url(#${highlightId})` })
+        );
         const t = el('text', { x, y, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': r * 0.95, 'font-weight': 800, fill: '#222' });
         t.textContent = a.el;
         layer.appendChild(t);
