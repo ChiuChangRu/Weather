@@ -125,35 +125,6 @@
     },
   };
 
-  // CAS 登記號 -> 一鍵生成的 preset key。這裡只收錄我們自己驗證過幾何/振動模式的分子——
-  // 不是接一個外部化學資料庫任意查任何 CAS(那需要能解析任意 SMILES/InChI 並支援所有元素與
-  // 未驗證過的立體物理,風險太高),而是誠實地只涵蓋上面 TARGETS 清單裡這些「真的算過、算對」的分子。
-  const CAS_MAP = {
-    '1333-74-0': 'H2',
-    '7782-44-7': 'O2',
-    '7727-37-9': 'N2',
-    '7732-18-5': 'H2O1',
-    '7664-41-7': 'H3N1',
-    '74-82-8': 'C1H4',
-    '74-84-0': 'C2H6',
-    '124-38-9': 'C1O2',
-    '7722-84-1': 'H2O2',
-    '50-00-0': 'C1H2O1',
-    '108-88-3': 'C7H8',
-    '71-43-2': 'C6H6',
-    '7664-93-9': 'H2O4S1',
-    '7647-01-0': 'H1Cl1',
-    '7697-37-2': 'H1N1O3',
-    '67-56-1': 'C1H4O1',
-    '64-17-5': 'C2H6O1',
-  };
-  function lookupCAS(raw) {
-    const cas = raw.trim().replace(/\s+/g, '');
-    const key = CAS_MAP[cas];
-    if (!key) return null;
-    return { key, label: TARGETS.find((t) => t.key === key)?.label || key };
-  }
-
   let atoms = [];
   let bonds = [];
   let nextId = 1;
@@ -1681,6 +1652,34 @@
       }
     });
 
+    // 孤對電子(lone pair):淡黃色電子雲球+兩個小黑點,標示這裡有一對未成鍵電子——
+    // 方向是 VSEPR 鬆弛時真正算出來的(跟鍵一樣互相排斥),不是隨便貼在旁邊裝飾用。
+    // 例如氨:N 上面應該看得到 1 個朝向四面體第 4 個角落的孤對,是它讓 NH3 變成三角錐形。
+    const LONE_LEN = 0.62;
+    mol3D.atoms.forEach((a) => {
+      const dirs = mol3D.phantoms && mol3D.phantoms.get(a.id);
+      if (!dirs || !dirs.length) return;
+      const live3 = byId.get(a.id);
+      if (!live3) return;
+      dirs.forEach((d) => {
+        const tip = { x: live3.x + d.x * LONE_LEN, y: live3.y + d.y * LONE_LEN, z: live3.z + d.z * LONE_LEN };
+        const tProj = project3D(tip);
+        const x1 = slot.cx + live3.proj.x * scale, y1 = slot.cy - live3.proj.y * scale;
+        const x2 = slot.cx + tProj.x * scale, y2 = slot.cy - tProj.y * scale;
+        const dx = x2 - x1, dy = y2 - y1;
+        const dlen = Math.hypot(dx, dy) || 1;
+        const lx = x1 + dx * 0.68, ly = y1 + dy * 0.68;
+        const ang = (Math.atan2(dy, dx) * 180) / Math.PI;
+        layer.appendChild(
+          el('ellipse', { cx: lx, cy: ly, rx: 15, ry: 9, fill: '#fff3b0', 'fill-opacity': 0.85, stroke: '#d9b93c', 'stroke-width': 1, transform: `rotate(${ang} ${lx} ${ly})` })
+        );
+        const px = -dy / dlen, py = dx / dlen;
+        [-1, 1].forEach((s) => {
+          layer.appendChild(el('circle', { cx: lx + px * 4 * s, cy: ly + py * 4 * s, r: 2.6, fill: '#333' }));
+        });
+      });
+    });
+
     // 真實鍵長(Å)標示(用未加振動位移的基準座標,避免文字跟著抖動)
     const basePos = mol3D.atoms.map((a) => ({ ...a, proj: project3D(a) }));
     const baseById = new Map(basePos.map((p) => [p.id, p]));
@@ -2331,26 +2330,6 @@
 
     buildPalette();
     document.getElementById('lewis-clear').addEventListener('click', clearAll);
-
-    const casInput = document.getElementById('cas-input');
-    const casStatus = document.getElementById('cas-status');
-    function runCasSearch() {
-      const found = lookupCAS(casInput.value);
-      if (!found) {
-        casStatus.textContent = casInput.value.trim()
-          ? `查無此 CAS 號——目前只收錄上面看得到的常見分子清單(共 ${TARGETS.length} 種),還沒辦法查任意化合物。`
-          : '請輸入 CAS 登記號,例如 7732-18-5(水)。';
-        casStatus.className = 'tiny';
-        return;
-      }
-      casStatus.textContent = `找到 CAS ${casInput.value.trim()} → ${found.label},正在生成…`;
-      casStatus.className = 'tiny status-line success';
-      buildPresetMolecule(found.key);
-    }
-    document.getElementById('cas-search-btn').addEventListener('click', runCasSearch);
-    casInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') runCasSearch();
-    });
 
     const cloudBtn = document.getElementById('btn-cloud');
     cloudBtn.addEventListener('click', () => {
