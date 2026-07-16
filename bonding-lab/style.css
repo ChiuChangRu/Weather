@@ -184,7 +184,18 @@ main { max-width: 1280px; margin: 0 auto; padding: 20px; }
   touch-action: none;
 }
 
-.target-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.mol-selects { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.mol-select {
+  flex: 1 1 220px;
+  min-width: 180px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  background: #fff;
+  color: var(--text);
+}
+#plastic-select { border-color: #c9a8e0; color: #6b4fa0; }
 
 .canvas-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .tool-btn {
@@ -282,6 +293,8 @@ table.ref { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
 .ref th { color: var(--muted); font-weight: 600; }
 
 .tiny { font-size: 0.78rem; color: var(--muted); margin: 8px 0 0; line-height: 1.55; }
+.plastic-peak-list { margin: 6px 0 0; padding-left: 18px; }
+.plastic-peak-list li { margin-bottom: 2px; }
 
 details.info-card summary,
 details.side-note summary {

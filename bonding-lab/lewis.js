@@ -78,6 +78,124 @@
     { key: 'C2H6O1', label: 'C₂H₅OH 乙醇' },
   ];
 
+  // ---- 常見塑膠的 IR 特徵峰(文獻參考值,不是即時計算) ----
+  // 塑膠是長鏈高分子(重複單元上千個),不是這個引擎設計來處理的小分子,VSEPR/Hessian
+  // 物理沒辦法、也不該假裝去「算」一條無限長的鏈子。這裡誠實地改用文獻上公認的
+  // 特徵吸收峰(ATR-FTIR 常見對照表)當參考,同一種塑膠不同廠牌/添加劑/結晶度多少會有些微差異,
+  // 這正是「看差異有多少」的意義——峰位置是拿來對照真實光譜、抓特徵官能基用的,不是拿來算溫室效應。
+  const PLASTICS = {
+    PE: {
+      label: 'PE 聚乙烯', full: '聚乙烯(Polyethylene)', uses: '塑膠袋、保鮮膜、水管(回收碼 2/4)',
+      peaks: [
+        { freq: 2915, strength: 0.9, note: 'CH₂ 不對稱伸縮' },
+        { freq: 2848, strength: 0.85, note: 'CH₂ 對稱伸縮' },
+        { freq: 1472, strength: 0.4, note: 'CH₂ 剪式彎曲' },
+        { freq: 730, strength: 0.5, note: 'CH₂ 搖擺(結晶區雙峰之一)' },
+        { freq: 719, strength: 0.45, note: 'CH₂ 搖擺(結晶區雙峰之一)' },
+      ],
+    },
+    PP: {
+      label: 'PP 聚丙烯', full: '聚丙烯(Polypropylene)', uses: '食品容器、吸管、瓶蓋(回收碼 5)',
+      peaks: [
+        { freq: 2950, strength: 0.7, note: 'CH₃ 不對稱伸縮' },
+        { freq: 2917, strength: 0.8, note: 'CH₂ 不對稱伸縮' },
+        { freq: 2868, strength: 0.55, note: 'CH₃ 對稱伸縮' },
+        { freq: 1456, strength: 0.45, note: 'CH₃/CH₂ 彎曲' },
+        { freq: 1376, strength: 0.55, note: 'CH₃ 對稱彎曲(區別 PP/PE 的關鍵峰)' },
+        { freq: 997, strength: 0.35, note: 'CH₃ 搖擺 + C−C 伸縮(螺旋結構敏感)' },
+        { freq: 841, strength: 0.3, note: 'CH₂ 搖擺' },
+      ],
+    },
+    PS: {
+      label: 'PS 聚苯乙烯', full: '聚苯乙烯(Polystyrene)', uses: '保麗龍、透明杯、免洗餐具(回收碼 6)',
+      peaks: [
+        { freq: 3060, strength: 0.3, note: '芳香環 C−H 伸縮' },
+        { freq: 3026, strength: 0.35, note: '芳香環 C−H 伸縮' },
+        { freq: 2923, strength: 0.6, note: '脂肪族 CH₂ 伸縮' },
+        { freq: 1601, strength: 0.25, note: '苯環骨架 C=C 伸縮' },
+        { freq: 1493, strength: 0.4, note: '苯環骨架 C=C 伸縮' },
+        { freq: 1452, strength: 0.4, note: 'CH₂ 彎曲' },
+        { freq: 756, strength: 0.65, note: '單取代苯環 面外彎曲(特徵雙峰之一)' },
+        { freq: 698, strength: 0.75, note: '單取代苯環 面外彎曲(特徵雙峰之一,最診斷性)' },
+      ],
+    },
+    PVC: {
+      label: 'PVC 聚氯乙烯', full: '聚氯乙烯(Polyvinyl chloride)', uses: '水管、雨衣、地板材(回收碼 3)',
+      peaks: [
+        { freq: 2971, strength: 0.4, note: 'C−H 伸縮' },
+        { freq: 2913, strength: 0.45, note: 'C−H 伸縮' },
+        { freq: 1425, strength: 0.4, note: 'CH₂ 彎曲(鄰近 C−Cl)' },
+        { freq: 1330, strength: 0.35, note: 'CH 搖擺' },
+        { freq: 1254, strength: 0.4, note: 'CH 彎曲' },
+        { freq: 960, strength: 0.3, note: 'C−C 骨架伸縮' },
+        { freq: 690, strength: 0.7, note: 'C−Cl 伸縮(最診斷性)' },
+        { freq: 615, strength: 0.55, note: 'C−Cl 伸縮' },
+      ],
+    },
+    PMMA: {
+      label: 'PMMA 壓克力', full: '聚甲基丙烯酸甲酯(Polymethyl methacrylate)', uses: '壓克力板、有機玻璃、隱形眼鏡',
+      peaks: [
+        { freq: 2995, strength: 0.45, note: 'O−CH₃ / CH₂ 伸縮' },
+        { freq: 2950, strength: 0.4, note: 'C−H 伸縮' },
+        { freq: 1730, strength: 0.95, note: 'C=O 酯基伸縮(最強、最診斷性)' },
+        { freq: 1450, strength: 0.35, note: 'CH₃ 不對稱彎曲' },
+        { freq: 1435, strength: 0.3, note: 'CH₂ 彎曲' },
+        { freq: 1270, strength: 0.55, note: 'C−O−C 不對稱伸縮' },
+        { freq: 1145, strength: 0.6, note: 'C−O−C 對稱伸縮' },
+        { freq: 985, strength: 0.25, note: '骨架伸縮' },
+      ],
+    },
+    ABS: {
+      label: 'ABS', full: '丙烯腈-丁二烯-苯乙烯共聚物(Acrylonitrile Butadiene Styrene)', uses: '樂高積木、家電外殼、3D 列印線材',
+      peaks: [
+        { freq: 3025, strength: 0.25, note: '芳香環 C−H 伸縮(苯乙烯)' },
+        { freq: 2923, strength: 0.55, note: '脂肪族 C−H 伸縮' },
+        { freq: 2237, strength: 0.6, note: 'C≡N 腈基伸縮(丙烯腈,最診斷性)' },
+        { freq: 1600, strength: 0.25, note: '苯環骨架(苯乙烯)' },
+        { freq: 1452, strength: 0.35, note: 'CH₂ 彎曲' },
+        { freq: 966, strength: 0.3, note: '反式 CH=CH 彎曲(丁二烯)' },
+        { freq: 758, strength: 0.45, note: '單取代苯環面外彎曲(苯乙烯)' },
+        { freq: 700, strength: 0.5, note: '單取代苯環面外彎曲(苯乙烯)' },
+      ],
+    },
+    TPU: {
+      label: 'TPU 熱塑性聚氨酯', full: '熱塑性聚氨酯(Thermoplastic Polyurethane,依軟硬段組成可能有多種配方)', uses: '手機殼、彈性鞋材、3D 列印彈性線材',
+      peaks: [
+        { freq: 3330, strength: 0.55, note: 'N−H 伸縮(氫鍵)' },
+        { freq: 2940, strength: 0.4, note: 'C−H 伸縮' },
+        { freq: 2860, strength: 0.35, note: 'C−H 伸縮' },
+        { freq: 1730, strength: 0.75, note: 'C=O 胺基甲酸酯伸縮(游離)' },
+        { freq: 1703, strength: 0.7, note: 'C=O 胺基甲酸酯伸縮(氫鍵)' },
+        { freq: 1530, strength: 0.5, note: 'N−H 彎曲 + C−N 伸縮(amide II)' },
+        { freq: 1220, strength: 0.45, note: 'C−N / C−O−C 伸縮' },
+        { freq: 1075, strength: 0.4, note: 'C−O−C 醚鍵伸縮(聚醚型軟段)' },
+      ],
+    },
+    PVP: {
+      label: 'PVP 聚乙烯吡咯烷酮', full: '聚乙烯吡咯烷酮(Polyvinylpyrrolidone)', uses: '藥物賦形劑、洗髮精/化妝品增稠劑、碘伏(PVP-I)',
+      peaks: [
+        { freq: 2950, strength: 0.4, note: 'C−H 伸縮' },
+        { freq: 1655, strength: 0.95, note: 'C=O 內醯胺伸縮(amide I,最診斷性)' },
+        { freq: 1424, strength: 0.35, note: 'CH₂ 彎曲' },
+        { freq: 1287, strength: 0.4, note: 'C−N 伸縮' },
+        { freq: 1020, strength: 0.3, note: '環骨架伸縮' },
+      ],
+    },
+    PEG: {
+      label: 'PEG 聚乙二醇', full: '聚乙二醇(Polyethylene glycol)', uses: '藥物/化妝品賦形劑、保濕劑、PEG 化藥物',
+      peaks: [
+        { freq: 3400, strength: 0.4, note: 'O−H 伸縮(端基,寬峰)' },
+        { freq: 2880, strength: 0.6, note: 'C−H 伸縮' },
+        { freq: 1467, strength: 0.3, note: 'CH₂ 彎曲' },
+        { freq: 1341, strength: 0.25, note: 'CH₂ 搖擺' },
+        { freq: 1145, strength: 0.55, note: 'C−O−C 醚鍵伸縮' },
+        { freq: 1100, strength: 0.85, note: 'C−O−C 醚鍵伸縮(最強、最診斷性)' },
+        { freq: 960, strength: 0.25, note: 'CH₂ 搖擺' },
+        { freq: 843, strength: 0.2, note: 'CH₂ 搖擺' },
+      ],
+    },
+  };
+
   // 一鍵生成:原子種類 + 鍵結列表 [原子索引a, 原子索引b, 鍵級]
   const PRESETS = {
     H2: { els: ['H', 'H'], bonds: [[0, 1, 1]] },
@@ -139,6 +257,7 @@
   const rigidSlotOf = new Map(); // atomId -> {cx,cy,scale}:這顆原子所屬分子在畫布上的中心與縮放,3D 投影用
   const TRASH = { x: STAGE_W - 54, y: STAGE_H - 54, r: 32 };
   const doneTargets = new Set();
+  let currentPlastic = null; // 目前選的塑膠(文獻參考模式);一旦開始操作分子畫布就會清掉
 
   let stage, statusEl, readoutEl, chipsEl, selPanelEl;
 
@@ -439,6 +558,7 @@
   function clearAll() {
     buildGen++; // 讓任何還在跑的舊最佳化/振動迴圈作廢,不會跟接下來要畫的新分子搶畫面
     optimizing = false;
+    currentPlastic = null;
     atoms = [];
     bonds = [];
     selectedId = null;
@@ -1757,6 +1877,13 @@
   function renderGhgVerdict() {
     const p = document.getElementById('ghg-verdict');
     if (!p) return;
+    if (currentPlastic) {
+      // 塑膠是文獻參考峰,不是即時算出來的振動模式,談不上「這個模式改不改變偶極矩」——
+      // 溫室效應判斷需要真正的振動模式與強度,這裡沒有,所以塑膠一律不討論溫室效應。
+      p.textContent = '';
+      p.className = 'status-line';
+      return;
+    }
     const ga = greenhouseAssessment();
     if (!ga) {
       p.textContent = '';
@@ -1773,18 +1900,8 @@
     }
   }
 
-  function renderIRChart() {
-    const svg = document.getElementById('svg-lewis-ir');
-    if (!svg) return;
-    svg.innerHTML = '';
-    renderGhgVerdict();
-    if (!mol3D || modes3D.length === 0) return;
-    const xHi = 4000, xLo = 400;
-    const L = 68, Rm = 20, T = 46, Bm = 46, W = 720, Hh = 230;
-    const xPx = (w) => L + ((xHi - w) / (xHi - xLo)) * (W - L - Rm);
-    const yPx = (pct) => T + ((100 - pct) / 100) * (Hh - T - Bm);
-    const g = el('g', {});
-
+  // IR 圖表共用的座標軸/格線繪製,分子模式(有黑體疊圖)跟塑膠參考模式共用同一套版面
+  function drawIRAxes(g, xPx, yPx, L, Rm, T, Bm, W, Hh) {
     g.appendChild(el('line', { x1: L, y1: T, x2: L, y2: Hh - Bm, stroke: '#99a1b3', 'stroke-width': 1 }));
     g.appendChild(el('line', { x1: L, y1: Hh - Bm, x2: W - Rm, y2: Hh - Bm, stroke: '#99a1b3', 'stroke-width': 1 }));
     [4000, 3000, 2000, 1000, 400].forEach((w) => {
@@ -1810,6 +1927,78 @@
     });
     yl.textContent = '穿透率 %T';
     g.appendChild(yl);
+  }
+
+  // 塑膠 IR 圖:純文獻參考特徵峰(紫色標示以區別於真實計算的黑色曲線),不疊黑體輻射、不判溫室效應
+  function renderPlasticIR() {
+    const svg = document.getElementById('svg-lewis-ir');
+    if (!svg) return;
+    svg.innerHTML = '';
+    renderGhgVerdict();
+    const p = PLASTICS[currentPlastic];
+    if (!p) return;
+    const xHi = 4000, xLo = 400;
+    const L = 68, Rm = 20, T = 46, Bm = 46, W = 720, Hh = 230;
+    const xPx = (w) => L + ((xHi - w) / (xHi - xLo)) * (W - L - Rm);
+    const yPx = (pct) => T + ((100 - pct) / 100) * (Hh - T - Bm);
+    const g = el('g', {});
+    drawIRAxes(g, xPx, yPx, L, Rm, T, Bm, W, Hh);
+
+    const title = el('text', { x: L + 8, y: T - 12, 'font-size': 13, 'font-weight': 700, fill: '#6b4fa0' });
+    title.textContent = `📚 ${p.label} 特徵峰(文獻參考值,非即時計算)`;
+    g.appendChild(title);
+
+    const gamma = 40;
+    let d = '';
+    for (let w = xHi; w >= xLo; w -= 6) {
+      let pct = 100;
+      p.peaks.forEach((pk) => {
+        const z = (w - pk.freq) / gamma;
+        pct -= pk.strength * 88 * (1 / (1 + z * z));
+      });
+      d += (d ? 'L' : 'M') + xPx(w).toFixed(1) + ',' + yPx(Math.max(pct, 2)).toFixed(1) + ' ';
+    }
+    g.appendChild(el('path', { d, fill: 'none', stroke: '#6b4fa0', 'stroke-width': 2.2 }));
+
+    p.peaks.forEach((pk) => {
+      const px = xPx(pk.freq);
+      const py = yPx(100 - pk.strength * 88);
+      const t = el('text', { x: px, y: py - 10, 'text-anchor': 'middle', 'font-size': 12, fill: '#6b4fa0', 'font-weight': 600 });
+      t.textContent = pk.freq.toFixed(0);
+      g.appendChild(t);
+    });
+
+    svg.setAttribute('viewBox', `0 0 ${W} ${Hh}`);
+    svg.appendChild(g);
+  }
+
+  function showPlastic(key) {
+    clearAll();
+    currentPlastic = key;
+    const p = PLASTICS[key];
+    setStatus(`已切換到塑膠參考模式:${p.label}。以下是文獻上的特徵吸收峰,不是即時計算。`, 'success');
+    renderVibPanel();
+    renderEnergyHeader();
+    renderIRChart();
+    render();
+  }
+
+  function renderIRChart() {
+    const svg = document.getElementById('svg-lewis-ir');
+    if (!svg) return;
+    if (currentPlastic) {
+      renderPlasticIR();
+      return;
+    }
+    svg.innerHTML = '';
+    renderGhgVerdict();
+    if (!mol3D || modes3D.length === 0) return;
+    const xHi = 4000, xLo = 400;
+    const L = 68, Rm = 20, T = 46, Bm = 46, W = 720, Hh = 230;
+    const xPx = (w) => L + ((xHi - w) / (xHi - xLo)) * (W - L - Rm);
+    const yPx = (pct) => T + ((100 - pct) / 100) * (Hh - T - Bm);
+    const g = el('g', {});
+    drawIRAxes(g, xPx, yPx, L, Rm, T, Bm, W, Hh);
 
     // 疊上地球熱輻射(288K)與太陽輻射尾端(5778K)黑體曲線(各自歸一化,示意)
     const y0 = yPx(0);
@@ -1887,10 +2076,30 @@
   function renderVibPanel() {
     const wrap = document.getElementById('vib-mode-list');
     const axisWrap = document.getElementById('vib-axis-wrap');
+    const irTitle = document.getElementById('ir-title');
+    const irDesc = document.getElementById('ir-desc');
+    const sideTitle = document.getElementById('vib-side-title');
+    const sideDesc = document.getElementById('vib-side-desc');
     if (!wrap) return;
     wrap.innerHTML = '';
+    if (currentPlastic) {
+      const p = PLASTICS[currentPlastic];
+      if (sideTitle) sideTitle.textContent = '📚 特徵峰(文獻參考)';
+      if (sideDesc) sideDesc.textContent = '塑膠是高分子,沒有可拖曳播放的立體結構,以下列出常見用途與特徵吸收峰';
+      wrap.innerHTML = `<p class="tiny"><b>${p.full}</b><br>常見用途:${p.uses}<br><br>塑膠是長鏈高分子(重複單元上千個),不是這個引擎設計來處理的小分子——右邊/下面是文獻上公認的特徵吸收峰,不是即時計算。同一種塑膠不同廠牌、添加劑、結晶度多少會有差異,這正是看文獻參考值的意義:抓特徵官能基,不是背死的數字。</p>` +
+        `<ul class="tiny plastic-peak-list">${p.peaks.map((pk) => `<li><b>${pk.freq} cm⁻¹</b> — ${pk.note}</li>`).join('')}</ul>`;
+      if (irTitle) irTitle.textContent = `📚 ${p.label} 的 IR 特徵峰(文獻參考)`;
+      if (irDesc) irDesc.innerHTML = '紫線＝文獻上公認的特徵吸收峰位置(強度為示意,非真實積分吸收度)。塑膠是高分子聚合物,沒有單一「振動模式」可以像小分子一樣逐一計算,這裡不討論溫室效應——溫室氣體判斷需要真正算出來的振動模式與偶極矩變化率。';
+      if (axisWrap) axisWrap.style.display = '';
+      renderIRChart();
+      return;
+    }
+    if (sideTitle) sideTitle.textContent = '🎵 振動模式';
+    if (sideDesc) sideDesc.textContent = '點一下,直接在左邊分子上播放';
+    if (irTitle) irTitle.textContent = '🌍 這顆分子的 IR 光譜 與 溫室效應判斷';
+    if (irDesc) irDesc.innerHTML = '黑線＝這顆分子的 IR 吸收光譜(強度來自模式改變偶極矩的程度);橙色/黃色區塊＝地球熱輻射與太陽輻射,疊在一起才看得出哪個振動模式真正擋得住地球散熱。只列出有代表性的模式,簡併(對稱重複)已合併,雜訊般的低頻模式已省略。點選左邊的振動模式,對應的吸收峰會在圖上明顯標示出來。';
     if (!mol3D || modes3D.length === 0) {
-      wrap.innerHTML = '<p class="tiny">分子接好鍵、放開滑鼠(或用上面 CAS 查詢/點選常見分子)後會自動最佳化,這裡會列出這顆分子真正算出來的重要振動模式(依真實原子質量與鍵力常數,對位能面做 Hessian 對角化;簡併模式與雜訊模式已自動省略),動畫會直接顯示在左邊的分子上,下面也會畫出這顆分子的 IR 光譜。</p>';
+      wrap.innerHTML = '<p class="tiny">分子接好鍵、放開滑鼠(或點選上面常見分子/塑膠選單)後會自動最佳化,這裡會列出這顆分子真正算出來的重要振動模式(依真實原子質量與鍵力常數,對位能面做 Hessian 對角化;簡併模式與雜訊模式已自動省略),動畫會直接顯示在左邊的分子上,下面也會畫出這顆分子的 IR 光譜。</p>';
       if (axisWrap) axisWrap.style.display = 'none';
       renderIRChart();
       return;
@@ -1990,25 +2199,22 @@
       const key = formulaKey(countsOf(comp));
       if (TARGETS.some((t) => t.key === key)) doneTargets.add(key);
     });
-    // 只有第一次或勾選狀態真的變了才重建按鈕,避免振動動畫每一幀都重新產生 DOM
-    if (chipsEl.childElementCount !== TARGETS.length) {
+    // 只有第一次才重建選項,避免振動動畫每一幀都重新產生 DOM
+    if (chipsEl.childElementCount !== TARGETS.length + 1) {
       chipsEl.innerHTML = '';
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = '選擇常見小分子…';
+      chipsEl.appendChild(placeholder);
       TARGETS.forEach((t) => {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'chip';
-        chip.title = '點一下直接生成這個分子並自動最佳化';
-        chip.dataset.key = t.key;
-        chip.addEventListener('click', () => buildPresetMolecule(t.key));
-        chipsEl.appendChild(chip);
+        const opt = document.createElement('option');
+        opt.value = t.key;
+        opt.textContent = t.label;
+        chipsEl.appendChild(opt);
       });
     }
-    Array.from(chipsEl.children).forEach((chip, i) => {
-      const t = TARGETS[i];
-      const done = doneTargets.has(t.key);
-      chip.className = 'chip' + (done ? ' done' : '');
-      chip.textContent = (done ? '✓ ' : '') + t.label;
-    });
+    const currentKey = currentPlastic ? '' : TARGETS.find((t) => doneTargets.has(t.key))?.key || '';
+    if (chipsEl.value !== currentKey) chipsEl.value = currentKey;
 
     // 畫布上的分子清單
     const lines = [];
@@ -2330,6 +2536,33 @@
 
     buildPalette();
     document.getElementById('lewis-clear').addEventListener('click', clearAll);
+
+    const plasticSelect = document.getElementById('plastic-select');
+    chipsEl.addEventListener('change', () => {
+      if (chipsEl.value) {
+        buildPresetMolecule(chipsEl.value);
+        if (plasticSelect) plasticSelect.value = '';
+      }
+    });
+    if (plasticSelect) {
+      plasticSelect.innerHTML = '';
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = '🧪 選擇塑膠(IR 特徵峰文獻參考)…';
+      plasticSelect.appendChild(placeholder);
+      Object.entries(PLASTICS).forEach(([key, p]) => {
+        const opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = p.label;
+        plasticSelect.appendChild(opt);
+      });
+      plasticSelect.addEventListener('change', () => {
+        if (plasticSelect.value) {
+          showPlastic(plasticSelect.value);
+          chipsEl.value = '';
+        }
+      });
+    }
 
     const cloudBtn = document.getElementById('btn-cloud');
     cloudBtn.addEventListener('click', () => {
