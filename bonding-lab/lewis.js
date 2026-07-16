@@ -708,7 +708,7 @@
     });
     if (withCross) {
       // 偶極箭頭的「⊕」尾巴:正端記號
-      const cl = 5;
+      const cl = 4 + width * 1.4;
       const pxc = -Math.sin(ang);
       const pyc = Math.cos(ang);
       layer.appendChild(
@@ -756,8 +756,8 @@
         el('circle', { cx: p.x, cy: p.y, r: R * 1.15, fill: 'none', stroke: color, 'stroke-width': 1, 'stroke-dasharray': '3,5', 'stroke-opacity': 0.4 })
       );
       if (pull > 0.2 || pull < -0.2) {
-        const lp = polar(p.x, p.y, R + 16, 135);
-        const t = el('text', { x: lp.x, y: lp.y, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 700, fill: color });
+        const lp = polar(p.x, p.y, R + 20, 135);
+        const t = el('text', { x: lp.x, y: lp.y, 'text-anchor': 'middle', 'font-size': 19, 'font-weight': 800, fill: color });
         t.textContent = pull > 0 ? 'δ−' : 'δ+';
         layer.appendChild(t);
       }
@@ -793,10 +793,10 @@
       const py = ux;
       // 鍵偶極箭頭(δ+ ⊕→ δ−)
       if (polarBond) {
-        const mx = (p1.x + p2.x) / 2 + px * 30;
-        const my = (p1.y + p2.y) / 2 + py * 30;
+        const mx = (p1.x + p2.x) / 2 + px * 34;
+        const my = (p1.y + p2.y) / 2 + py * 34;
         const dir = dEN > 0 ? 1 : -1;
-        drawArrow(layer, mx - ux * 16 * dir, my - uy * 16 * dir, mx + ux * 16 * dir, my + uy * 16 * dir, '#495057', 1.6, true);
+        drawArrow(layer, mx - ux * 22 * dir, my - uy * 22 * dir, mx + ux * 22 * dir, my + uy * 22 * dir, '#2b3038', 2.8, true);
       }
     });
     // 每個分子的淨偶極(用目前實際畫面上的座標重新算方向,跟著旋轉/振動走)
@@ -816,13 +816,13 @@
       const mag = Math.hypot(vx, vy);
       const cx = comp.reduce((s, a) => s + posOf(a.id).x, 0) / comp.length;
       const cy = comp.reduce((s, a) => s + posOf(a.id).y, 0) / comp.length;
-      const topY = Math.min(...comp.map((a) => posOf(a.id).y)) - 52;
+      const topY = Math.min(...comp.map((a) => posOf(a.id).y)) - 60;
       if (mag >= 0.35) {
         const ux = vx / mag;
         const uy = vy / mag;
-        const L2 = 26 + Math.min(30, mag * 14);
-        drawArrow(layer, cx - ux * L2, cy - uy * L2, cx + ux * L2, cy + uy * L2, '#e8940a', 2.6, true);
-        const t = el('text', { x: cx, y: topY, 'text-anchor': 'middle', 'font-size': 12.5, 'font-weight': 700, fill: '#e8940a' });
+        const L2 = 34 + Math.min(40, mag * 18);
+        drawArrow(layer, cx - ux * L2, cy - uy * L2, cx + ux * L2, cy + uy * L2, '#e8940a', 4, true);
+        const t = el('text', { x: cx, y: topY, 'text-anchor': 'middle', 'font-size': 18, 'font-weight': 800, fill: '#e8940a' });
         t.textContent = '淨偶極 μ ≠ 0 → 極性分子';
         layer.appendChild(t);
       } else {
@@ -830,7 +830,7 @@
           if (!ids.has(b.a)) return false;
           return Math.abs(ELEMENTS[atomById(b.a).el].en - ELEMENTS[atomById(b.b).el].en) >= 0.4;
         });
-        const t = el('text', { x: cx, y: topY, 'text-anchor': 'middle', 'font-size': 12.5, 'font-weight': 700, fill: '#4c6ef5' });
+        const t = el('text', { x: cx, y: topY, 'text-anchor': 'middle', 'font-size': 18, 'font-weight': 800, fill: '#4c6ef5' });
         t.textContent = anyPolarBond ? '鍵偶極對稱抵銷 → 非極性分子' : '鍵無極性 → 非極性分子';
         layer.appendChild(t);
       }
@@ -1348,10 +1348,10 @@
         const a = item.p;
         const info = ELEMENTS[a.el];
         const depthScale = 1 + a.proj.z * (0.9 / maxR) * 0.15;
-        const r = info.r * 0.62 * depthScale;
+        const r = info.r * 0.78 * depthScale;
         const x = slot.cx + a.proj.x * scale, y = slot.cy - a.proj.y * scale;
-        layer.appendChild(el('circle', { cx: x, cy: y, r, fill: info.color, stroke: '#555', 'stroke-width': 1.3 }));
-        const t = el('text', { x, y, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': r * 0.85, 'font-weight': 700, fill: '#222' });
+        layer.appendChild(el('circle', { cx: x, cy: y, r, fill: info.color, stroke: '#555', 'stroke-width': 1.6 }));
+        const t = el('text', { x, y, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': r * 0.95, 'font-weight': 800, fill: '#222' });
         t.textContent = a.el;
         layer.appendChild(t);
       }
@@ -1373,8 +1373,9 @@
         x: mx - (dy / dlen) * 12,
         y: my + (dx / dlen) * 12,
         'text-anchor': 'middle',
-        'font-size': 10.5,
-        fill: '#8a93a8',
+        'font-size': 15,
+        'font-weight': 700,
+        fill: '#5c6270',
       });
       t.textContent = `${len.toFixed(2)} Å`;
       layer.appendChild(t);
@@ -1405,7 +1406,7 @@
       const deg = sum / count;
       const cProj = baseById.get(c.id).proj;
       const cx2 = slot.cx + cProj.x * scale, cy2 = slot.cy - cProj.y * scale;
-      const t = el('text', { x: cx2, y: cy2 - 16, 'text-anchor': 'middle', 'font-size': 10.5, 'font-weight': 700, fill: '#4c6ef5' });
+      const t = el('text', { x: cx2, y: cy2 - 18, 'text-anchor': 'middle', 'font-size': 16, 'font-weight': 800, fill: '#4c6ef5' });
       t.textContent = nb.length === 2 ? `${deg.toFixed(1)}°` : `≈${deg.toFixed(1)}°(平均)`;
       layer.appendChild(t);
     });
