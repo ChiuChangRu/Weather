@@ -38,6 +38,7 @@
   setBP('C', 'C', 3, 1.2, 15.6);
   setBP('C', 'N', 1, 1.47, 4.9);
   setBP('C', 'N', 2, 1.28, 10.0);
+  setBP('C', 'N', 3, 1.16, 17.7);
   setBP('C', 'O', 1, 1.43, 5.0);
   setBP('C', 'O', 2, 1.21, 12.1);
   setBP('N', 'N', 1, 1.45, 4.0);
@@ -86,6 +87,7 @@
   const PLASTICS = {
     PE: {
       label: 'PE 聚乙烯', full: '聚乙烯(Polyethylene)', uses: '塑膠袋、保鮮膜、水管(回收碼 2/4)',
+      presetKey: 'PE_ANALOG', analogName: '丁烷(C₄H₁₀)——PE 的 -(CH₂)n- 骨架代表',
       peaks: [
         { freq: 2915, strength: 0.9, note: 'CH₂ 不對稱伸縮' },
         { freq: 2848, strength: 0.85, note: 'CH₂ 對稱伸縮' },
@@ -96,6 +98,7 @@
     },
     PP: {
       label: 'PP 聚丙烯', full: '聚丙烯(Polypropylene)', uses: '食品容器、吸管、瓶蓋(回收碼 5)',
+      presetKey: 'PP_ANALOG', analogName: '2-甲基丁烷/異戊烷(C₅H₁₂)——PP 甲基取代骨架代表',
       peaks: [
         { freq: 2950, strength: 0.7, note: 'CH₃ 不對稱伸縮' },
         { freq: 2917, strength: 0.8, note: 'CH₂ 不對稱伸縮' },
@@ -108,6 +111,7 @@
     },
     PS: {
       label: 'PS 聚苯乙烯', full: '聚苯乙烯(Polystyrene)', uses: '保麗龍、透明杯、免洗餐具(回收碼 6)',
+      presetKey: 'C7H8', analogName: '甲苯(C₇H₈)——PS 苯環+脂肪鏈骨架代表(乙苯的兩層懸鏈結構在這套簡化力場中不易收斂,改用結構已驗證穩定的甲苯,芳香環特徵不變)',
       peaks: [
         { freq: 3060, strength: 0.3, note: '芳香環 C−H 伸縮' },
         { freq: 3026, strength: 0.35, note: '芳香環 C−H 伸縮' },
@@ -121,6 +125,7 @@
     },
     PVC: {
       label: 'PVC 聚氯乙烯', full: '聚氯乙烯(Polyvinyl chloride)', uses: '水管、雨衣、地板材(回收碼 3)',
+      presetKey: 'PVC_ANALOG', analogName: '1-氯丙烷(C₃H₇Cl)——PVC 的 C−Cl 骨架代表',
       peaks: [
         { freq: 2971, strength: 0.4, note: 'C−H 伸縮' },
         { freq: 2913, strength: 0.45, note: 'C−H 伸縮' },
@@ -134,6 +139,7 @@
     },
     PMMA: {
       label: 'PMMA 壓克力', full: '聚甲基丙烯酸甲酯(Polymethyl methacrylate)', uses: '壓克力板、有機玻璃、隱形眼鏡',
+      presetKey: 'PMMA_ANALOG', analogName: '特戊酸甲酯 methyl pivalate(C₆H₁₂O₂)——PMMA 四級碳+酯基代表',
       peaks: [
         { freq: 2995, strength: 0.45, note: 'O−CH₃ / CH₂ 伸縮' },
         { freq: 2950, strength: 0.4, note: 'C−H 伸縮' },
@@ -147,6 +153,7 @@
     },
     ABS: {
       label: 'ABS', full: '丙烯腈-丁二烯-苯乙烯共聚物(Acrylonitrile Butadiene Styrene)', uses: '樂高積木、家電外殼、3D 列印線材',
+      presetKey: 'ABS_ANALOG', analogName: '異丁腈(C₄H₇N)——ABS 中丙烯腈成分 C≡N 代表(不含丁二烯/苯乙烯部分)',
       peaks: [
         { freq: 3025, strength: 0.25, note: '芳香環 C−H 伸縮(苯乙烯)' },
         { freq: 2923, strength: 0.55, note: '脂肪族 C−H 伸縮' },
@@ -160,6 +167,7 @@
     },
     TPU: {
       label: 'TPU 熱塑性聚氨酯', full: '熱塑性聚氨酯(Thermoplastic Polyurethane,依軟硬段組成可能有多種配方)', uses: '手機殼、彈性鞋材、3D 列印彈性線材',
+      presetKey: 'TPU_ANALOG', analogName: 'N-甲基胺基甲酸甲酯(C₃H₇NO₂)——TPU 胺基甲酸酯(urethane)鍵結代表',
       peaks: [
         { freq: 3330, strength: 0.55, note: 'N−H 伸縮(氫鍵)' },
         { freq: 2940, strength: 0.4, note: 'C−H 伸縮' },
@@ -173,6 +181,7 @@
     },
     PVP: {
       label: 'PVP 聚乙烯吡咯烷酮', full: '聚乙烯吡咯烷酮(Polyvinylpyrrolidone)', uses: '藥物賦形劑、洗髮精/化妝品增稠劑、碘伏(PVP-I)',
+      presetKey: 'PVP_ANALOG', analogName: 'N-甲基乙醯胺(C₃H₇NO)——PVP 內醯胺 C=O 官能基代表(不含五圓環)',
       peaks: [
         { freq: 2950, strength: 0.4, note: 'C−H 伸縮' },
         { freq: 1655, strength: 0.95, note: 'C=O 內醯胺伸縮(amide I,最診斷性)' },
@@ -183,6 +192,7 @@
     },
     PEG: {
       label: 'PEG 聚乙二醇', full: '聚乙二醇(Polyethylene glycol)', uses: '藥物/化妝品賦形劑、保濕劑、PEG 化藥物',
+      presetKey: 'PEG_ANALOG', analogName: '1,2-二甲氧基乙烷(C₄H₁₀O₂)——PEG 的 C−O−C 醚鍵骨架代表(無端基 OH)',
       peaks: [
         { freq: 3400, strength: 0.4, note: 'O−H 伸縮(端基,寬峰)' },
         { freq: 2880, strength: 0.6, note: 'C−H 伸縮' },
@@ -240,6 +250,61 @@
     C2H6O1: {
       els: ['C', 'C', 'H', 'H', 'H', 'H', 'H', 'O', 'H'],
       bonds: [[0, 1, 1], [0, 2, 1], [0, 3, 1], [0, 4, 1], [1, 5, 1], [1, 6, 1], [1, 7, 1], [7, 8, 1]],
+    },
+
+    // ---- 塑膠參考模式用的小分子代表結構(真實、有名字的小分子,抓住該塑膠最主要的官能基/骨架特徵,
+    // 不是那條無限長聚合物鏈本身,但可以用這個引擎真的算出 3D 結構跟振動模式,拿來跟文獻參考峰比較) ----
+    PE_ANALOG: { // 丁烷,PE 的 -(CH2)n- 骨架
+      els: ['C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'],
+      bonds: [[0, 1, 1], [1, 2, 1], [2, 3, 1], [0, 4, 1], [0, 5, 1], [0, 6, 1], [1, 7, 1], [1, 8, 1], [2, 9, 1], [2, 10, 1], [3, 11, 1], [3, 12, 1], [3, 13, 1]],
+    },
+    PP_ANALOG: { // 2-甲基丁烷(異戊烷),PP 甲基取代骨架的代表
+      els: ['C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'],
+      bonds: [
+        [0, 1, 1], [1, 2, 1], [2, 3, 1], [1, 4, 1],
+        [0, 5, 1], [0, 6, 1], [0, 7, 1], [1, 8, 1], [2, 9, 1], [2, 10, 1],
+        [3, 11, 1], [3, 12, 1], [3, 13, 1], [4, 14, 1], [4, 15, 1], [4, 16, 1],
+      ],
+    },
+    PVC_ANALOG: { // 1-氯丙烷,PVC 的 C-Cl 骨架代表
+      els: ['C', 'C', 'C', 'Cl', 'H', 'H', 'H', 'H', 'H', 'H', 'H'],
+      bonds: [[3, 0, 1], [0, 1, 1], [1, 2, 1], [0, 4, 1], [0, 5, 1], [1, 6, 1], [1, 7, 1], [2, 8, 1], [2, 9, 1], [2, 10, 1]],
+    },
+    PMMA_ANALOG: { // 特戊酸甲酯(methyl pivalate),PMMA 四級碳+酯基的代表
+      els: ['C', 'C', 'C', 'C', 'C', 'O', 'O', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'],
+      bonds: [
+        [0, 1, 1], [0, 2, 1], [0, 3, 1], [0, 4, 1], [4, 5, 2], [4, 6, 1], [6, 7, 1],
+        [1, 8, 1], [1, 9, 1], [1, 10, 1], [2, 11, 1], [2, 12, 1], [2, 13, 1],
+        [3, 14, 1], [3, 15, 1], [3, 16, 1], [7, 17, 1], [7, 18, 1], [7, 19, 1],
+      ],
+    },
+    ABS_ANALOG: { // 異丁腈,ABS 中丙烯腈成分 C≡N 的代表
+      els: ['C', 'C', 'C', 'C', 'N', 'H', 'H', 'H', 'H', 'H', 'H', 'H'],
+      bonds: [
+        [0, 1, 1], [0, 2, 1], [0, 3, 1], [3, 4, 3],
+        [0, 5, 1], [1, 6, 1], [1, 7, 1], [1, 8, 1], [2, 9, 1], [2, 10, 1], [2, 11, 1],
+      ],
+    },
+    TPU_ANALOG: { // N-甲基胺基甲酸甲酯,TPU 胺基甲酸酯(urethane)鍵結的代表
+      els: ['N', 'C', 'C', 'O', 'O', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H'],
+      bonds: [
+        [0, 1, 1], [0, 2, 1], [2, 3, 2], [2, 4, 1], [4, 5, 1], [0, 6, 1],
+        [1, 7, 1], [1, 8, 1], [1, 9, 1], [5, 10, 1], [5, 11, 1], [5, 12, 1],
+      ],
+    },
+    PVP_ANALOG: { // N-甲基乙醯胺,PVP 內醯胺 C=O 官能基的代表(不含環,N 上只留一個取代基,收斂更穩定)
+      els: ['C', 'C', 'O', 'N', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H'],
+      bonds: [
+        [0, 1, 1], [1, 2, 2], [1, 3, 1], [3, 4, 1], [3, 5, 1],
+        [0, 6, 1], [0, 7, 1], [0, 8, 1], [4, 9, 1], [4, 10, 1], [4, 11, 1],
+      ],
+    },
+    PEG_ANALOG: { // 1,2-二甲氧基乙烷,PEG 的 C-O-C 醚鍵骨架代表
+      els: ['C', 'O', 'C', 'C', 'O', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'],
+      bonds: [
+        [0, 1, 1], [1, 2, 1], [2, 3, 1], [3, 4, 1], [4, 5, 1],
+        [0, 6, 1], [0, 7, 1], [0, 8, 1], [2, 9, 1], [2, 10, 1], [3, 11, 1], [3, 12, 1], [5, 13, 1], [5, 14, 1], [5, 15, 1],
+      ],
     },
   };
 
@@ -1293,18 +1358,31 @@
       nbA.forEach((ia) => nbB.forEach((ib) => stericExcluded.add(pairKey(ia, ib))));
     });
     ringGroups.forEach((ring) => {
+      // 環外的取代基本身也可能還有自己的取代基,而且可以接兩層以上(如乙苯的環上接
+      // CH2 再接 CH3 再接 H,共 3 層)——往外展開固定 3 層再排除,不然離環太近的原子
+      // 還是會被拿來跟環互推、把 120° 弄歪。不能無限展開,不然大分子整條鏈的立體
+      // 推擠都會被關掉,遠處該有的交錯排列反而不見了。
       const related = new Set(ring);
-      ring.forEach((id) => nbIds.get(id).forEach((nb) => related.add(nb)));
-      // 環外的取代基本身也可能還有自己的取代基(如甲苯的環上接甲基,甲基又接 3 個 H)——
-      // 這些「孫輩」原子也要一起排除,不然甲基的 H 對環的立體推擠一樣會把 120° 弄歪
-      [...related].forEach((id) => nbIds.get(id).forEach((nb) => related.add(nb)));
+      let frontier = [...ring];
+      for (let hop = 0; hop < 3; hop++) {
+        const next = [];
+        frontier.forEach((id) =>
+          nbIds.get(id).forEach((nb) => {
+            if (!related.has(nb)) {
+              related.add(nb);
+              next.push(nb);
+            }
+          })
+        );
+        frontier = next;
+      }
       const list = [...related];
       for (let i = 0; i < list.length; i++)
         for (let j = i + 1; j < list.length; j++) stericExcluded.add(pairKey(list[i], list[j]));
     });
-    const STERIC_R = { H: 1.3, C: 1.45, N: 1.42, O: 1.38 }; // 近似 vdW 半徑(Å)
+    const STERIC_R = { H: 1.3, C: 1.45, N: 1.42, O: 1.38, S: 1.8, Cl: 1.75 }; // 近似 vdW 半徑(Å)
 
-    const STEPS = 2200;
+    const STEPS = 3200;
     for (let step = 0; step < STEPS; step++) {
       const stepScale = 1 - step / STEPS;
       // 鍵長彈簧(真實 Å)
@@ -1930,97 +2008,55 @@
   }
 
   // 塑膠 IR 圖:純文獻參考特徵峰(紫色標示以區別於真實計算的黑色曲線),不疊黑體輻射、不判溫室效應
-  function renderPlasticIR() {
-    const svg = document.getElementById('svg-lewis-ir');
-    if (!svg) return;
-    svg.innerHTML = '';
-    renderGhgVerdict();
-    const p = PLASTICS[currentPlastic];
-    if (!p) return;
-    const xHi = 4000, xLo = 400;
-    const L = 68, Rm = 20, T = 46, Bm = 46, W = 720, Hh = 230;
-    const xPx = (w) => L + ((xHi - w) / (xHi - xLo)) * (W - L - Rm);
-    const yPx = (pct) => T + ((100 - pct) / 100) * (Hh - T - Bm);
-    const g = el('g', {});
-    drawIRAxes(g, xPx, yPx, L, Rm, T, Bm, W, Hh);
-
-    const title = el('text', { x: L + 8, y: T - 12, 'font-size': 13, 'font-weight': 700, fill: '#6b4fa0' });
-    title.textContent = `📚 ${p.label} 特徵峰(文獻參考值,非即時計算)`;
-    g.appendChild(title);
-
-    const gamma = 40;
-    let d = '';
-    for (let w = xHi; w >= xLo; w -= 6) {
-      let pct = 100;
-      p.peaks.forEach((pk) => {
-        const z = (w - pk.freq) / gamma;
-        pct -= pk.strength * 88 * (1 / (1 + z * z));
-      });
-      d += (d ? 'L' : 'M') + xPx(w).toFixed(1) + ',' + yPx(Math.max(pct, 2)).toFixed(1) + ' ';
-    }
-    g.appendChild(el('path', { d, fill: 'none', stroke: '#6b4fa0', 'stroke-width': 2.2 }));
-
-    p.peaks.forEach((pk) => {
-      const px = xPx(pk.freq);
-      const py = yPx(100 - pk.strength * 88);
-      const t = el('text', { x: px, y: py - 10, 'text-anchor': 'middle', 'font-size': 12, fill: '#6b4fa0', 'font-weight': 600 });
-      t.textContent = pk.freq.toFixed(0);
-      g.appendChild(t);
-    });
-
-    svg.setAttribute('viewBox', `0 0 ${W} ${Hh}`);
-    svg.appendChild(g);
-  }
-
   function showPlastic(key) {
-    clearAll();
-    currentPlastic = key;
     const p = PLASTICS[key];
-    setStatus(`已切換到塑膠參考模式:${p.label}。以下是文獻上的特徵吸收峰,不是即時計算。`, 'success');
-    renderVibPanel();
-    renderEnergyHeader();
-    renderIRChart();
-    render();
+    if (!p || !PRESETS[p.presetKey]) return;
+    buildPresetMolecule(p.presetKey);
+    currentPlastic = key; // buildPresetMolecule 內部的 clearAll() 會清成 null,要在它跑完之後才設定
+    setStatus(
+      `已切換到塑膠參考模式:${p.label}。用「${p.analogName}」當代表結構,真的算出 3D 結構與振動模式——正在自動最佳化…`,
+      'success'
+    );
   }
 
   function renderIRChart() {
     const svg = document.getElementById('svg-lewis-ir');
     if (!svg) return;
-    if (currentPlastic) {
-      renderPlasticIR();
-      return;
-    }
     svg.innerHTML = '';
     renderGhgVerdict();
     if (!mol3D || modes3D.length === 0) return;
     const xHi = 4000, xLo = 400;
-    const L = 68, Rm = 20, T = 46, Bm = 46, W = 720, Hh = 230;
+    // 塑膠模式要多留一排空間畫文獻參考峰的數字,底部邊界拉大一點,避免跟座標軸文字疊在一起
+    const L = 68, Rm = 20, T = 46, Bm = currentPlastic ? 62 : 46, W = 720, Hh = 230;
     const xPx = (w) => L + ((xHi - w) / (xHi - xLo)) * (W - L - Rm);
     const yPx = (pct) => T + ((100 - pct) / 100) * (Hh - T - Bm);
     const g = el('g', {});
     drawIRAxes(g, xPx, yPx, L, Rm, T, Bm, W, Hh);
 
-    // 疊上地球熱輻射(288K)與太陽輻射尾端(5778K)黑體曲線(各自歸一化,示意)
-    const y0 = yPx(0);
-    let earthMax = 0;
-    for (let w = xLo; w <= xHi; w += 10) earthMax = Math.max(earthMax, planckLewis(w, 288));
-    const earthH = (Hh - T - Bm) * 0.55;
-    let dEarth = `M${xPx(xHi).toFixed(1)},${y0.toFixed(1)} `;
-    for (let w = xHi; w >= xLo; w -= 10) dEarth += `L${xPx(w).toFixed(1)},${(y0 - (planckLewis(w, 288) / earthMax) * earthH).toFixed(1)} `;
-    dEarth += `L${xPx(xLo).toFixed(1)},${y0.toFixed(1)} Z`;
-    g.appendChild(el('path', { d: dEarth, fill: 'rgba(232,148,10,.16)', stroke: '#e8940a', 'stroke-width': 1.2 }));
-    const sunRef = planckLewis(xHi, 5778);
-    const sunH = (Hh - T - Bm) * 0.3;
-    let dSun = `M${xPx(xHi).toFixed(1)},${y0.toFixed(1)} `;
-    for (let w = xHi; w >= xLo; w -= 10) dSun += `L${xPx(w).toFixed(1)},${(y0 - (planckLewis(w, 5778) / sunRef) * sunH).toFixed(1)} `;
-    dSun += `L${xPx(xLo).toFixed(1)},${y0.toFixed(1)} Z`;
-    g.appendChild(el('path', { d: dSun, fill: 'rgba(250,204,21,.15)', stroke: '#d4a90a', 'stroke-width': 1, 'stroke-dasharray': '4,3' }));
-    const legE = el('text', { x: L + 8, y: T - 26, 'font-size': 13, 'font-weight': 700, fill: '#e8940a' });
-    legE.textContent = '━ 地球熱輻射(288K)';
-    g.appendChild(legE);
-    const legS = el('text', { x: L + 8, y: T - 10, 'font-size': 13, fill: '#b8930a' });
-    legS.textContent = '┅ 太陽輻射尾端(5778K)';
-    g.appendChild(legS);
+    if (!currentPlastic) {
+      // 疊上地球熱輻射(288K)與太陽輻射尾端(5778K)黑體曲線(各自歸一化,示意)——
+      // 塑膠參考模式不討論溫室效應,黑體曲線跟這個議題綁在一起,所以只有一般分子才畫
+      const y0 = yPx(0);
+      let earthMax = 0;
+      for (let w = xLo; w <= xHi; w += 10) earthMax = Math.max(earthMax, planckLewis(w, 288));
+      const earthH = (Hh - T - Bm) * 0.55;
+      let dEarth = `M${xPx(xHi).toFixed(1)},${y0.toFixed(1)} `;
+      for (let w = xHi; w >= xLo; w -= 10) dEarth += `L${xPx(w).toFixed(1)},${(y0 - (planckLewis(w, 288) / earthMax) * earthH).toFixed(1)} `;
+      dEarth += `L${xPx(xLo).toFixed(1)},${y0.toFixed(1)} Z`;
+      g.appendChild(el('path', { d: dEarth, fill: 'rgba(232,148,10,.16)', stroke: '#e8940a', 'stroke-width': 1.2 }));
+      const sunRef = planckLewis(xHi, 5778);
+      const sunH = (Hh - T - Bm) * 0.3;
+      let dSun = `M${xPx(xHi).toFixed(1)},${y0.toFixed(1)} `;
+      for (let w = xHi; w >= xLo; w -= 10) dSun += `L${xPx(w).toFixed(1)},${(y0 - (planckLewis(w, 5778) / sunRef) * sunH).toFixed(1)} `;
+      dSun += `L${xPx(xLo).toFixed(1)},${y0.toFixed(1)} Z`;
+      g.appendChild(el('path', { d: dSun, fill: 'rgba(250,204,21,.15)', stroke: '#d4a90a', 'stroke-width': 1, 'stroke-dasharray': '4,3' }));
+      const legE = el('text', { x: L + 8, y: T - 26, 'font-size': 13, 'font-weight': 700, fill: '#e8940a' });
+      legE.textContent = '━ 地球熱輻射(288K)';
+      g.appendChild(legE);
+      const legS = el('text', { x: L + 8, y: T - 10, 'font-size': 13, fill: '#b8930a' });
+      legS.textContent = '┅ 太陽輻射尾端(5778K)';
+      g.appendChild(legS);
+    }
 
     // 目前播放中的模式:先畫一條顯眼的色帶標出它在光譜上的位置,讓後面畫的黑色吸收曲線
     // 疊在色帶上面,一眼就能看出「現在播放的振動模式對應哪個峰」,不用在一堆峰裡面找
@@ -2069,6 +2105,22 @@
       g.appendChild(el('circle', { cx: spx, cy: spy, r: 8, fill: '#3b5bdb', stroke: '#fff', 'stroke-width': 2.5 }));
     }
 
+    // 塑膠模式:疊上文獻參考的特徵峰(紫色,貼近底部,跟上面黑色計算峰的標籤分開,避免互相蓋住),
+    // 直接對照代表分子的即時計算結果跟真實塑膠的文獻值差異有多大
+    if (currentPlastic) {
+      const p = PLASTICS[currentPlastic];
+      const legend = el('text', { x: L + 8, y: T - 10, 'font-size': 13, 'font-weight': 700, fill: '#6b4fa0' });
+      legend.textContent = `┊ ${p.label} 文獻參考特徵峰`;
+      g.appendChild(legend);
+      p.peaks.forEach((pk) => {
+        const px = xPx(pk.freq);
+        g.appendChild(el('line', { x1: px, y1: T, x2: px, y2: Hh - Bm, stroke: '#6b4fa0', 'stroke-width': 1.3, 'stroke-dasharray': '3,3', 'stroke-opacity': 0.7 }));
+        const t = el('text', { x: px, y: Hh - Bm + 34, 'text-anchor': 'middle', 'font-size': 10.5, fill: '#6b4fa0', 'font-weight': 700 });
+        t.textContent = pk.freq;
+        g.appendChild(t);
+      });
+    }
+
     svg.setAttribute('viewBox', `0 0 ${W} ${Hh}`);
     svg.appendChild(g);
   }
@@ -2084,13 +2136,38 @@
     wrap.innerHTML = '';
     if (currentPlastic) {
       const p = PLASTICS[currentPlastic];
-      if (sideTitle) sideTitle.textContent = '📚 特徵峰(文獻參考)';
-      if (sideDesc) sideDesc.textContent = '塑膠是高分子,沒有可拖曳播放的立體結構,以下列出常見用途與特徵吸收峰';
-      wrap.innerHTML = `<p class="tiny"><b>${p.full}</b><br>常見用途:${p.uses}<br><br>塑膠是長鏈高分子(重複單元上千個),不是這個引擎設計來處理的小分子——右邊/下面是文獻上公認的特徵吸收峰,不是即時計算。同一種塑膠不同廠牌、添加劑、結晶度多少會有差異,這正是看文獻參考值的意義:抓特徵官能基,不是背死的數字。</p>` +
-        `<ul class="tiny plastic-peak-list">${p.peaks.map((pk) => `<li><b>${pk.freq} cm⁻¹</b> — ${pk.note}</li>`).join('')}</ul>`;
-      if (irTitle) irTitle.textContent = `📚 ${p.label} 的 IR 特徵峰(文獻參考)`;
-      if (irDesc) irDesc.innerHTML = '紫線＝文獻上公認的特徵吸收峰位置(強度為示意,非真實積分吸收度)。塑膠是高分子聚合物,沒有單一「振動模式」可以像小分子一樣逐一計算,這裡不討論溫室效應——溫室氣體判斷需要真正算出來的振動模式與偶極矩變化率。';
+      if (sideTitle) sideTitle.textContent = '🎵 振動模式(代表分子)';
+      if (sideDesc) sideDesc.textContent = `${p.analogName} 的真實振動模式,點一下播放`;
+      const info = document.createElement('p');
+      info.className = 'tiny';
+      info.innerHTML =
+        `<b>${p.full}</b><br>常見用途:${p.uses}<br>代表結構:<b>${p.analogName}</b><br><br>` +
+        `塑膠是長鏈高分子(重複單元上千個),不是這個引擎設計來處理的小分子——左邊改用這顆真正算出 3D 結構與振動模式的小分子,` +
+        `抓住最主要的官能基特徵。下面 IR 圖黑線是這顆代表分子的即時計算結果,紫色虛線是文獻上這種塑膠真正的特徵峰,` +
+        `兩者對照可以看出小分子模型跟真實高分子鏈的差異有多大。`;
+      wrap.appendChild(info);
+      if (irTitle) irTitle.textContent = `📚 ${p.label}:代表分子光譜 vs. 文獻參考峰`;
+      if (irDesc) irDesc.innerHTML = '黑線＝代表分子(見左)即時算出的 IR 光譜;紫色虛線＝文獻上這種塑膠的特徵吸收峰。兩者對照可以看出小分子模型跟真實高分子鏈的差異有多大——這裡不討論溫室效應,溫室氣體判斷是地球大氣的議題,跟塑膠材料無關。';
+      if (!mol3D || modes3D.length === 0) {
+        if (axisWrap) axisWrap.style.display = 'none';
+        renderIRChart();
+        return;
+      }
       if (axisWrap) axisWrap.style.display = '';
+      modes3D.forEach((m, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'orb-btn vib-btn' + (i === selectedMode ? ' active' : '');
+        const ir = m.intensity >= 0.04 * Math.max(...modes3D.map((mm) => mm.intensity), 1e-9) ? '✔IR' : '✘IR';
+        btn.textContent = `${m.bondLabel || ''} ${m.type} ${m.freq.toFixed(0)} cm⁻¹${m.count > 1 ? `(${m.count}重簡併)` : ''} ${ir}`;
+        btn.addEventListener('click', () => {
+          selectedMode = i;
+          vibPlaying = true;
+          vibT0 = performance.now();
+          renderVibPanel();
+          startVibLoop();
+        });
+        wrap.appendChild(btn);
+      });
       renderIRChart();
       return;
     }

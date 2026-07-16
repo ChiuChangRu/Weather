@@ -293,8 +293,6 @@ table.ref { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
 .ref th { color: var(--muted); font-weight: 600; }
 
 .tiny { font-size: 0.78rem; color: var(--muted); margin: 8px 0 0; line-height: 1.55; }
-.plastic-peak-list { margin: 6px 0 0; padding-left: 18px; }
-.plastic-peak-list li { margin-bottom: 2px; }
 
 details.info-card summary,
 details.side-note summary {
