@@ -875,28 +875,8 @@
     });
     layer.appendChild(cloudGroup);
 
-    // 鍵偶極箭頭與淨偶極(清晰的圖層,不模糊)
-    bonds.forEach((b) => {
-      const a1 = atomById(b.a);
-      const a2 = atomById(b.b);
-      const p1 = posOf(b.a), p2 = posOf(b.b);
-      const dEN = ELEMENTS[a2.el].en - ELEMENTS[a1.el].en; // >0:a2 是 δ−
-      const polarBond = Math.abs(dEN) >= 0.4;
-      const dx = p2.x - p1.x;
-      const dy = p2.y - p1.y;
-      const len = Math.hypot(dx, dy) || 1;
-      const ux = dx / len;
-      const uy = dy / len;
-      const px = -uy;
-      const py = ux;
-      // 鍵偶極箭頭(δ+ ⊕→ δ−)
-      if (polarBond) {
-        const mx = (p1.x + p2.x) / 2 + px * 34;
-        const my = (p1.y + p2.y) / 2 + py * 34;
-        const dir = dEN > 0 ? 1 : -1;
-        drawArrow(layer, mx - ux * 22 * dir, my - uy * 22 * dir, mx + ux * 22 * dir, my + uy * 22 * dir, '#2b3038', 2.8, true);
-      }
-    });
+    // 淨偶極(清晰的圖層,不模糊)——只畫整個分子的淨偶極,不逐一畫每根鍵的鍵偶極,
+    // 避免多鍵分子(如 H2SO4)畫面被一堆小箭頭塞滿,重點是「加總起來到底有沒有淨偶極」。
     // 每個分子的淨偶極(用目前實際畫面上的座標重新算方向,跟著旋轉/振動走)
     components().forEach((comp) => {
       if (comp.length < 2) return;
@@ -1820,6 +1800,14 @@
     legS.textContent = '┅ 太陽輻射尾端(5778K)';
     g.appendChild(legS);
 
+    // 目前播放中的模式:先畫一條顯眼的色帶標出它在光譜上的位置,讓後面畫的黑色吸收曲線
+    // 疊在色帶上面,一眼就能看出「現在播放的振動模式對應哪個峰」,不用在一堆峰裡面找
+    const selMode = modes3D[selectedMode];
+    if (selMode) {
+      const spx = xPx(selMode.freq);
+      g.appendChild(el('rect', { x: spx - 16, y: T, width: 32, height: Hh - Bm - T, fill: '#3b5bdb', 'fill-opacity': 0.14 }));
+    }
+
     // 這顆分子的 IR 吸收峰(Lorentzian),強度來自 dμ/dQ(偶極對這個模式的變化率)
     const maxI = Math.max(...modes3D.map((m) => m.intensity), 1e-9);
     const gamma = 40;
@@ -1838,17 +1826,25 @@
     modes3D.forEach((m, i) => {
       const px = xPx(m.freq);
       const inten = m.intensity / maxI;
-      if (inten < 0.04) return; // 幾乎不吸收就不特別標
+      if (inten < 0.04 && i !== selectedMode) return; // 幾乎不吸收就不特別標(選取中的模式例外,一定要看得到)
       const py = yPx(100 - inten * 88);
-      const t = el('text', { x: px, y: py - 10, 'text-anchor': 'middle', 'font-size': 13, fill: i === selectedMode ? '#3b5bdb' : '#495057', 'font-weight': i === selectedMode ? 700 : 600 });
+      const t = el('text', {
+        x: px, y: py - 10, 'text-anchor': 'middle',
+        'font-size': i === selectedMode ? 17 : 13,
+        fill: i === selectedMode ? '#3b5bdb' : '#495057',
+        'font-weight': i === selectedMode ? 800 : 600,
+      });
       t.textContent = m.freq.toFixed(0);
       g.appendChild(t);
     });
-    // 選取模式標記
+    // 選取模式標記:粗色虛線 + 峰頂一顆醒目圓點,標出目前正在播放的振動模式對應哪個峰
     const sel = modes3D[selectedMode];
     if (sel) {
       const spx = xPx(sel.freq);
-      g.appendChild(el('line', { x1: spx, y1: T, x2: spx, y2: Hh - Bm, stroke: '#3b5bdb', 'stroke-width': 1.5, 'stroke-dasharray': '5,4' }));
+      const selInten = sel.intensity / maxI;
+      const spy = yPx(Math.max(2, 100 - selInten * 88));
+      g.appendChild(el('line', { x1: spx, y1: T, x2: spx, y2: Hh - Bm, stroke: '#3b5bdb', 'stroke-width': 2.4, 'stroke-dasharray': '7,4' }));
+      g.appendChild(el('circle', { cx: spx, cy: spy, r: 8, fill: '#3b5bdb', stroke: '#fff', 'stroke-width': 2.5 }));
     }
 
     svg.setAttribute('viewBox', `0 0 ${W} ${Hh}`);

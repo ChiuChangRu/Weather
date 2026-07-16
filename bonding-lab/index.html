@@ -4,14 +4,14 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>化學鍵結互動教學 — 共價鍵形成 與 LCAO 分子軌域理論</title>
-<link rel="stylesheet" href="style.css?v=20" />
+<link rel="stylesheet" href="style.css?v=21" />
 </head>
 <body>
 
 <header class="app-header">
   <div class="header-row">
     <figure class="pauling-fig">
-      <img src="pauling.png?v=20" alt="Linus Pauling" class="pauling-img"
+      <img src="pauling.png?v=21" alt="Linus Pauling" class="pauling-img"
            onerror="if(!this.dataset.f){this.dataset.f=1;this.src='https://commons.wikimedia.org/wiki/Special:FilePath/Linus%20Pauling%201962.jpg?width=300';}else{this.onerror=null;this.src='pauling.svg';}" />
       <figcaption>Linus Pauling<br>《化學鍵的本質》</figcaption>
     </figure>
@@ -45,7 +45,7 @@
             ⚛ 鍵長最佳化（簡易計算）
           </button>
           <button id="btn-cloud" class="tool-btn"
-            title="以半透明點狀(網狀)分布顯示價電子雲:紅=δ−(電子密度高)、藍=δ+(電子密度低),並畫出鍵偶極與淨偶極箭頭判斷極性分子">
+            title="以半透明模糊雲顯示價電子密度:紅=δ−(電子密度高)、藍=δ+(電子密度低),並畫出淨偶極箭頭判斷極性分子">
             ☁ 電子雲與極性
           </button>
         </div>
@@ -57,9 +57,6 @@
             <div class="orbital-buttons" id="vib-mode-list"></div>
           </div>
         </div>
-        <p id="lewis-status" class="status-line">先從左側把原子拖進畫布吧！</p>
-        <div id="component-readout" class="readout"></div>
-
         <div class="info-card vib-inline">
           <h4>🌍 這顆分子的 IR 光譜 與 溫室效應判斷</h4>
           <div id="vib-axis-wrap" style="display:none;margin-top:6px">
@@ -67,10 +64,13 @@
             <p id="ghg-verdict" class="status-line"></p>
             <p class="tiny">
               黑線＝這顆分子的 IR 吸收光譜(強度來自模式改變偶極矩的程度);橙色/黃色區塊＝地球熱輻射與太陽輻射,疊在一起才看得出哪個振動模式真正擋得住地球散熱。
-              只列出有代表性的模式,簡併(對稱重複)已合併,雜訊般的低頻模式已省略。
+              只列出有代表性的模式,簡併(對稱重複)已合併,雜訊般的低頻模式已省略。點選左邊的振動模式,對應的吸收峰會在圖上明顯標示出來。
             </p>
           </div>
         </div>
+
+        <p id="lewis-status" class="status-line">先從左側把原子拖進畫布吧！</p>
+        <div id="component-readout" class="readout"></div>
       </div>
 
       <aside class="info-panel">
@@ -113,7 +113,7 @@
           <p class="tiny">
             單獨黑點＝未配對電子（可成鍵）／黑點成對＝孤對電子／黃底電子對＝共用電子對（共價鍵）。
             綠框＝八隅體完成（穩定）；橘框＝還有未配對電子（不穩定）；紅＋／藍−徽章＝形式電荷。
-            電子雲模式：紅雲＝δ−、藍雲＝δ+；⊕→ 箭頭由 δ+ 指向 δ−（鍵偶極），橙色大箭頭＝淨偶極。
+            電子雲模式：紅雲＝δ−、藍雲＝δ+；橙色大箭頭＝整個分子的淨偶極（由 δ+ 指向 δ−）。
             灰色數字＝鍵長（相對單位）與鍵角。
           </p>
         </details>
@@ -258,8 +258,8 @@
   <p>多數圖示為教學用簡化示意；「H₂ Hartree–Fock」面板為真實的從頭計算（RHF／STO-3G）。</p>
 </footer>
 
-<script src="main.js?v=20"></script>
-<script src="lewis.js?v=20"></script>
-<script src="lcao.js?v=20"></script>
+<script src="main.js?v=21"></script>
+<script src="lewis.js?v=21"></script>
+<script src="lcao.js?v=21"></script>
 </body>
 </html>
