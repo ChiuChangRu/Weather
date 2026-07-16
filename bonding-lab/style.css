@@ -224,6 +224,30 @@ main { max-width: 1000px; margin: 0 auto; padding: 20px; }
 
 .vib-inline { margin-top: 12px; }
 
+.stage-and-modes {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+.stage-and-modes #lewis-stage {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vib-side {
+  flex: 0 0 220px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  overflow-y: auto;
+}
+.vib-side h4 { margin: 0 0 4px; font-size: 0.9rem; }
+.vib-side #vib-mode-list { flex-direction: column; }
+@media (max-width: 860px) {
+  .stage-and-modes { flex-direction: column; }
+  .vib-side { flex: 1 1 auto; }
+}
+
 .info-panel { display: flex; flex-direction: column; gap: 12px; }
 .info-card {
   background: var(--panel-bg);
@@ -262,7 +286,7 @@ details.side-note {
 
 .ref-cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 12px;
   margin-top: 14px;
 }

@@ -4,14 +4,14 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>化學鍵結互動教學 — 共價鍵形成 與 LCAO 分子軌域理論</title>
-<link rel="stylesheet" href="style.css?v=13" />
+<link rel="stylesheet" href="style.css?v=15" />
 </head>
 <body>
 
 <header class="app-header">
   <div class="header-row">
     <figure class="pauling-fig">
-      <img src="pauling.png?v=13" alt="Linus Pauling" class="pauling-img"
+      <img src="pauling.png?v=15" alt="Linus Pauling" class="pauling-img"
            onerror="if(!this.dataset.f){this.dataset.f=1;this.src='https://commons.wikimedia.org/wiki/Special:FilePath/Linus%20Pauling%201962.jpg?width=300';}else{this.onerror=null;this.src='pauling.svg';}" />
       <figcaption>Linus Pauling<br>《化學鍵的本質》</figcaption>
     </figure>
@@ -49,15 +49,22 @@
             ☁ 電子雲與極性
           </button>
         </div>
-        <svg id="lewis-stage" viewBox="0 0 760 520" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="stage-and-modes">
+          <svg id="lewis-stage" viewBox="0 0 760 520" preserveAspectRatio="xMidYMid meet"></svg>
+          <div class="vib-side">
+            <h4>🎵 振動模式</h4>
+            <p class="tiny">點一下,直接在左邊分子上播放</p>
+            <div class="orbital-buttons" id="vib-mode-list"></div>
+          </div>
+        </div>
         <p id="lewis-status" class="status-line">先從左側把原子拖進畫布吧！</p>
         <div id="component-readout" class="readout"></div>
 
         <div class="info-card vib-inline">
-          <h4>🎵 振動模式（點一下,直接在上面的分子上播放）</h4>
-          <div class="orbital-buttons" id="vib-mode-list"></div>
+          <h4>🌍 這顆分子的 IR 光譜 與 溫室效應判斷</h4>
           <div id="vib-axis-wrap" style="display:none;margin-top:6px">
-            <svg id="svg-lewis-ir" viewBox="0 0 720 210" style="width:100%;height:auto"></svg>
+            <svg id="svg-lewis-ir" viewBox="0 0 720 230" style="width:100%;height:auto"></svg>
+            <p id="ghg-verdict" class="status-line"></p>
             <p class="tiny">
               黑線＝這顆分子的 IR 吸收光譜(強度來自模式改變偶極矩的程度);橙色/黃色區塊＝地球熱輻射與太陽輻射,疊在一起才看得出哪個振動模式真正擋得住地球散熱。
               只列出有代表性的模式,簡併(對稱重複)已合併,雜訊般的低頻模式已省略。
@@ -209,9 +216,22 @@
       <div class="info-card">
         <h4>常見小分子氣體 — 哪些會吸收地球的紅外輻射？</h4>
         <p class="tiny">
-          N₂、O₂、Ar、H₂、CO₂、CH₄、H₂O（水蒸氣）、N₂O、O₃、CO、NH₃、SO₂<br><br>
+          N₂、O₂、Ar、H₂、CO₂、CH₄、H₂O（水蒸氣）、N₂O、O₃、CO、NH₃、SO₂、NO、NO₂、Cl₂、HCl<br><br>
           <b>判斷步驟</b>：①這個分子有沒有「會改變偶極矩」的振動？（單原子的 Ar 連振動都沒有；同核雙原子呢？）
-          ②它的吸收峰落在地球熱輻射的範圍嗎？——用上面的振動/IR 面板與電子雲極性工具自己檢驗，不要用背的！
+          ②它的吸收峰落在地球熱輻射的範圍嗎？——用上面「🌍 IR 光譜與溫室效應判斷」自己接一顆分子出來檢驗，不要用背的！
+        </p>
+      </div>
+      <div class="info-card">
+        <h4>常見的有害氣體</h4>
+        <p class="tiny">
+          <b>CO</b>（一氧化碳）：與血紅素結合,造成缺氧中毒<br>
+          <b>Cl₂</b>（氯氣）：刺激、腐蝕呼吸道<br>
+          <b>H₂S</b>（硫化氫）：劇毒,低濃度有臭雞蛋味,高濃度反而聞不到<br>
+          <b>HCN</b>（氰化氫）：劇毒,阻斷細胞呼吸作用<br>
+          <b>NO₂</b>（二氧化氮）：刺激性,光化學煙霧的成因之一<br>
+          <b>SO₂</b>（二氧化硫）：刺激性,溶於水形成酸雨<br>
+          <b>O₃</b>（臭氧）：近地面對呼吸道有害,但平流層的臭氧層能擋紫外線<br><br>
+          有害不等於溫室氣體,兩者是不同的判斷——上面的 SO₂、NO₂ 也同時是溫室氣體,可以自己接接看驗證。
         </p>
       </div>
       <div class="info-card">
@@ -238,8 +258,8 @@
   <p>多數圖示為教學用簡化示意；「H₂ Hartree–Fock」面板為真實的從頭計算（RHF／STO-3G）。</p>
 </footer>
 
-<script src="main.js?v=13"></script>
-<script src="lewis.js?v=13"></script>
-<script src="lcao.js?v=13"></script>
+<script src="main.js?v=15"></script>
+<script src="lewis.js?v=15"></script>
+<script src="lcao.js?v=15"></script>
 </body>
 </html>

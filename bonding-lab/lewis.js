@@ -683,16 +683,7 @@
     return { x: vx, y: vy, mag: Math.hypot(vx, vy) };
   }
 
-  // ---- 價電子雲(90% 機率邊界,點狀網狀分布) ----
-  function mulberry32(seed) {
-    return function () {
-      seed |= 0;
-      seed = (seed + 0x6d2b79f5) | 0;
-      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-  }
+  // ---- 價電子雲(海綿/棉花狀模糊電子密度表面) ----
 
   const CLOUD_RED = '#e03131'; // δ−(電子密度高)
   const CLOUD_BLUE = '#3b82f6'; // δ+(電子密度低)
@@ -726,63 +717,65 @@
     }
   }
 
+  // 電子雲畫成連續、模糊邊緣的「海綿/棉花」狀電子密度表面(仿 ESP 電位表面圖),
+  // 而不是一顆一顆的點:每個原子與每根鍵各給一顆模糊漸層的軟球,彼此重疊融合成一片。
   function drawCloud(layer) {
+    const defs = el('defs', {});
+    layer.appendChild(defs);
+    const blurId = 'cloud-blur';
+    const filter = el('filter', { id: blurId, x: '-80%', y: '-80%', width: '260%', height: '260%' });
+    filter.appendChild(el('feGaussianBlur', { stdDeviation: 6 }));
+    defs.appendChild(filter);
+    const cloudGroup = el('g', { filter: `url(#${blurId})` });
+
+    function radialBlob(id, color, opacity) {
+      const rg = el('radialGradient', { id, cx: '50%', cy: '50%', r: '50%' });
+      rg.appendChild(el('stop', { offset: '0%', 'stop-color': color, 'stop-opacity': opacity }));
+      rg.appendChild(el('stop', { offset: '55%', 'stop-color': color, 'stop-opacity': opacity * 0.6 }));
+      rg.appendChild(el('stop', { offset: '100%', 'stop-color': color, 'stop-opacity': 0 }));
+      defs.appendChild(rg);
+    }
+
     atoms.forEach((a) => {
       const info = ELEMENTS[a.el];
       const d = derived(a);
       const pull = pullOf(a);
       const color = pull > 0.2 ? CLOUD_RED : pull < -0.2 ? CLOUD_BLUE : CLOUD_NEUTRAL;
-      const rng = mulberry32(a.id * 7919 + 13);
-      const shellR = info.r + 11;
-      const r90 = info.r + 24;
+      const gradId = `cloud-atom-${a.id}`;
+      radialBlob(gradId, color, pull > 0.2 ? 0.85 : 0.6);
+      const R = info.r + 14 + d.nonbonding * 5 + Math.abs(pull) * 9;
+      cloudGroup.appendChild(el('circle', { cx: a.x, cy: a.y, r: R, fill: `url(#${gradId})` }));
+      // 90% 機率邊界(參考虛線圈,畫在模糊層外面才看得清楚)
       layer.appendChild(
-        el('circle', {
-          cx: a.x,
-          cy: a.y,
-          r: r90,
-          fill: 'none',
-          stroke: color,
-          'stroke-width': 1,
-          'stroke-dasharray': '3,5',
-          'stroke-opacity': 0.5,
-        })
+        el('circle', { cx: a.x, cy: a.y, r: R * 1.15, fill: 'none', stroke: color, 'stroke-width': 1, 'stroke-dasharray': '3,5', 'stroke-opacity': 0.4 })
       );
-      // 電子密度:拉電子(δ−)雲變深變密;推電子(δ+)雲變淡
-      const nDots = Math.max(12, Math.round(26 + d.nonbonding * 16 + pull * 28));
-      for (let i = 0; i < nDots; i++) {
-        const ang = rng() * Math.PI * 2;
-        const rr = shellR + (rng() + rng() + rng() - 1.5) * 9;
-        if (rr > r90 || rr < info.r * 0.55) continue;
-        layer.appendChild(
-          el('circle', {
-            cx: a.x + rr * Math.cos(ang),
-            cy: a.y + rr * Math.sin(ang),
-            r: 1.15,
-            fill: color,
-            'fill-opacity': pull > 0.2 ? 0.42 : 0.3,
-          })
-        );
-      }
       if (pull > 0.2 || pull < -0.2) {
-        const lp = polar(a.x, a.y, info.r + 32, 135);
-        const t = el('text', {
-          x: lp.x,
-          y: lp.y,
-          'text-anchor': 'middle',
-          'font-size': 13,
-          'font-weight': 700,
-          fill: color,
-        });
+        const lp = polar(a.x, a.y, R + 16, 135);
+        const t = el('text', { x: lp.x, y: lp.y, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 700, fill: color });
         t.textContent = pull > 0 ? 'δ−' : 'δ+';
         layer.appendChild(t);
       }
     });
     bonds.forEach((b) => {
+      // 鍵中間補一顆軟球,讓兩個原子的雲在鍵上連成一片(不會斷開)
+      const a1 = atomById(b.a);
+      const a2 = atomById(b.b);
+      const dEN = ELEMENTS[a2.el].en - ELEMENTS[a1.el].en;
+      const midColor = Math.abs(dEN) >= 0.4 ? (dEN > 0 ? CLOUD_RED : CLOUD_BLUE) : CLOUD_NEUTRAL;
+      const mx = (a1.x + a2.x) / 2, my = (a1.y + a2.y) / 2;
+      const gradId = `cloud-bond-${b.a}-${b.b}`;
+      radialBlob(gradId, midColor, 0.55);
+      const R = Math.hypot(a2.x - a1.x, a2.y - a1.y) / 2 + 16 + 4 * b.order;
+      cloudGroup.appendChild(el('circle', { cx: mx, cy: my, r: R, fill: `url(#${gradId})` }));
+    });
+    layer.appendChild(cloudGroup);
+
+    // 鍵偶極箭頭與淨偶極(清晰的圖層,不模糊)
+    bonds.forEach((b) => {
       const a1 = atomById(b.a);
       const a2 = atomById(b.b);
       const dEN = ELEMENTS[a2.el].en - ELEMENTS[a1.el].en; // >0:a2 是 δ−
       const polarBond = Math.abs(dEN) >= 0.4;
-      const rng = mulberry32((b.a * 31 + b.b) * 2711 + 7);
       const dx = a2.x - a1.x;
       const dy = a2.y - a1.y;
       const len = Math.hypot(dx, dy) || 1;
@@ -790,18 +783,6 @@
       const uy = dy / len;
       const px = -uy;
       const py = ux;
-      const spread = 6 + 3 * b.order;
-      const nDots = 40 * b.order;
-      const bias = Math.max(-1, Math.min(1, dEN)) * 0.1; // 雲往電負度大的一端偏
-      for (let i = 0; i < nDots; i++) {
-        const t = (rng() - 0.5) * 0.6 + bias;
-        const w = (rng() + rng() + rng() - 1.5) * spread;
-        const cx = (a1.x + a2.x) / 2 + t * len * ux + w * px;
-        const cy = (a1.y + a2.y) / 2 + t * len * uy + w * py;
-        let color = CLOUD_NEUTRAL;
-        if (polarBond) color = (t > 0 ? dEN > 0 : dEN < 0) ? CLOUD_RED : CLOUD_BLUE;
-        layer.appendChild(el('circle', { cx, cy, r: 1.15, fill: color, 'fill-opacity': 0.32 }));
-      }
       // 鍵偶極箭頭(δ+ ⊕→ δ−)
       if (polarBond) {
         const mx = (a1.x + a2.x) / 2 + px * 30;
@@ -1405,13 +1386,43 @@
     return (w * w * w) / (Math.expm1(x) || 1e-12);
   }
 
+  // 溫室效應相關波數範圍(粗略):地球 288K 熱輻射主要落在這裡(~4~50微米)
+  const GHG_LO = 200, GHG_HI = 2500;
+
+  function greenhouseAssessment() {
+    if (!modes3D.length) return null;
+    const maxI = Math.max(...modes3D.map((m) => m.intensity), 1e-9);
+    const hits = modes3D.filter((m) => m.intensity / maxI > 0.12 && m.freq >= GHG_LO && m.freq <= GHG_HI);
+    return { isGHG: hits.length > 0, hits };
+  }
+
+  function renderGhgVerdict() {
+    const p = document.getElementById('ghg-verdict');
+    if (!p) return;
+    const ga = greenhouseAssessment();
+    if (!ga) {
+      p.textContent = '';
+      p.className = 'status-line';
+      return;
+    }
+    if (ga.isGHG) {
+      const list = ga.hits.map((m) => `${m.freq.toFixed(0)} cm⁻¹`).join('、');
+      p.innerHTML = `🌍 <b>是溫室氣體</b> —— 這顆分子有振動模式(${list})同時①改變偶極矩(IR 活躍)②頻率落在地球熱輻射的範圍內,會吸收地球往外散的熱。`;
+      p.className = 'status-line warn';
+    } else {
+      p.innerHTML = '🌍 <b>不是溫室氣體</b>(以這幾個振動模式來看)—— 沒有模式同時符合「改變偶極矩」與「落在地球熱輻射範圍內」這兩個條件。';
+      p.className = 'status-line success';
+    }
+  }
+
   function renderIRChart() {
     const svg = document.getElementById('svg-lewis-ir');
     if (!svg) return;
     svg.innerHTML = '';
+    renderGhgVerdict();
     if (!mol3D || modes3D.length === 0) return;
     const xHi = 4000, xLo = 400;
-    const L = 56, Rm = 16, T = 30, Bm = 34, W = 720, Hh = 210;
+    const L = 68, Rm = 20, T = 46, Bm = 46, W = 720, Hh = 230;
     const xPx = (w) => L + ((xHi - w) / (xHi - xLo)) * (W - L - Rm);
     const yPx = (pct) => T + ((100 - pct) / 100) * (Hh - T - Bm);
     const g = el('g', {});
@@ -1421,20 +1432,26 @@
     [4000, 3000, 2000, 1000, 400].forEach((w) => {
       const x = xPx(w);
       g.appendChild(el('line', { x1: x, y1: Hh - Bm, x2: x, y2: Hh - Bm + 4, stroke: '#99a1b3', 'stroke-width': 1 }));
-      const t = el('text', { x, y: Hh - Bm + 15, 'text-anchor': 'middle', 'font-size': 10, fill: '#667085' });
+      const t = el('text', { x, y: Hh - Bm + 20, 'text-anchor': 'middle', 'font-size': 15, fill: '#495057' });
       t.textContent = w;
       g.appendChild(t);
     });
-    const xl = el('text', { x: (L + W - Rm) / 2, y: Hh - 4, 'text-anchor': 'middle', 'font-size': 10.5, fill: '#667085' });
+    const xl = el('text', { x: (L + W - Rm) / 2, y: Hh - 6, 'text-anchor': 'middle', 'font-size': 15, 'font-weight': 700, fill: '#495057' });
     xl.textContent = '波數(cm⁻¹)';
     g.appendChild(xl);
     [0, 50, 100].forEach((pct) => {
       const y = yPx(pct);
       g.appendChild(el('line', { x1: L - 4, y1: y, x2: L, y2: y, stroke: '#99a1b3', 'stroke-width': 1 }));
-      const t = el('text', { x: L - 7, y: y + 3.5, 'text-anchor': 'end', 'font-size': 10, fill: '#667085' });
+      const t = el('text', { x: L - 8, y: y + 5, 'text-anchor': 'end', 'font-size': 15, fill: '#495057' });
       t.textContent = pct;
       g.appendChild(t);
     });
+    const yl = el('text', {
+      x: 16, y: (T + Hh - Bm) / 2, 'text-anchor': 'middle', 'font-size': 15, 'font-weight': 700, fill: '#495057',
+      transform: `rotate(-90 16 ${(T + Hh - Bm) / 2})`,
+    });
+    yl.textContent = '穿透率 %T';
+    g.appendChild(yl);
 
     // 疊上地球熱輻射(288K)與太陽輻射尾端(5778K)黑體曲線(各自歸一化,示意)
     const y0 = yPx(0);
@@ -1451,10 +1468,10 @@
     for (let w = xHi; w >= xLo; w -= 10) dSun += `L${xPx(w).toFixed(1)},${(y0 - (planckLewis(w, 5778) / sunRef) * sunH).toFixed(1)} `;
     dSun += `L${xPx(xLo).toFixed(1)},${y0.toFixed(1)} Z`;
     g.appendChild(el('path', { d: dSun, fill: 'rgba(250,204,21,.15)', stroke: '#d4a90a', 'stroke-width': 1, 'stroke-dasharray': '4,3' }));
-    const legE = el('text', { x: L + 6, y: T + 10, 'font-size': 10, 'font-weight': 700, fill: '#e8940a' });
+    const legE = el('text', { x: L + 8, y: T - 26, 'font-size': 13, 'font-weight': 700, fill: '#e8940a' });
     legE.textContent = '━ 地球熱輻射(288K)';
     g.appendChild(legE);
-    const legS = el('text', { x: L + 6, y: T + 22, 'font-size': 10, fill: '#b8930a' });
+    const legS = el('text', { x: L + 8, y: T - 10, 'font-size': 13, fill: '#b8930a' });
     legS.textContent = '┅ 太陽輻射尾端(5778K)';
     g.appendChild(legS);
 
@@ -1471,14 +1488,14 @@
       });
       d += (d ? 'L' : 'M') + xPx(w).toFixed(1) + ',' + yPx(Math.max(pct, 2)).toFixed(1) + ' ';
     }
-    g.appendChild(el('path', { d, fill: 'none', stroke: '#1f2430', 'stroke-width': 2 }));
+    g.appendChild(el('path', { d, fill: 'none', stroke: '#1f2430', 'stroke-width': 2.2 }));
 
     modes3D.forEach((m, i) => {
       const px = xPx(m.freq);
       const inten = m.intensity / maxI;
       if (inten < 0.04) return; // 幾乎不吸收就不特別標
       const py = yPx(100 - inten * 88);
-      const t = el('text', { x: px, y: py - 8, 'text-anchor': 'middle', 'font-size': 9.5, fill: i === selectedMode ? '#3b5bdb' : '#667085', 'font-weight': i === selectedMode ? 700 : 400 });
+      const t = el('text', { x: px, y: py - 10, 'text-anchor': 'middle', 'font-size': 13, fill: i === selectedMode ? '#3b5bdb' : '#495057', 'font-weight': i === selectedMode ? 700 : 600 });
       t.textContent = m.freq.toFixed(0);
       g.appendChild(t);
     });
@@ -1596,15 +1613,24 @@
       const key = formulaKey(countsOf(comp));
       if (TARGETS.some((t) => t.key === key)) doneTargets.add(key);
     });
-    chipsEl.innerHTML = '';
-    TARGETS.forEach((t) => {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'chip' + (doneTargets.has(t.key) ? ' done' : '');
-      chip.title = '點一下直接生成這個分子並自動最佳化';
-      chip.textContent = (doneTargets.has(t.key) ? '✓ ' : '') + t.label;
-      chip.addEventListener('click', () => buildPresetMolecule(t.key));
-      chipsEl.appendChild(chip);
+    // 只有第一次或勾選狀態真的變了才重建按鈕,避免振動動畫每一幀都重新產生 DOM
+    if (chipsEl.childElementCount !== TARGETS.length) {
+      chipsEl.innerHTML = '';
+      TARGETS.forEach((t) => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'chip';
+        chip.title = '點一下直接生成這個分子並自動最佳化';
+        chip.dataset.key = t.key;
+        chip.addEventListener('click', () => buildPresetMolecule(t.key));
+        chipsEl.appendChild(chip);
+      });
+    }
+    Array.from(chipsEl.children).forEach((chip, i) => {
+      const t = TARGETS[i];
+      const done = doneTargets.has(t.key);
+      chip.className = 'chip' + (done ? ' done' : '');
+      chip.textContent = (done ? '✓ ' : '') + t.label;
     });
 
     // 畫布上的分子清單
