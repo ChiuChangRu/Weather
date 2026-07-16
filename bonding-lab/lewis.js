@@ -125,6 +125,35 @@
     },
   };
 
+  // CAS 登記號 -> 一鍵生成的 preset key。這裡只收錄我們自己驗證過幾何/振動模式的分子——
+  // 不是接一個外部化學資料庫任意查任何 CAS(那需要能解析任意 SMILES/InChI 並支援所有元素與
+  // 未驗證過的立體物理,風險太高),而是誠實地只涵蓋上面 TARGETS 清單裡這些「真的算過、算對」的分子。
+  const CAS_MAP = {
+    '1333-74-0': 'H2',
+    '7782-44-7': 'O2',
+    '7727-37-9': 'N2',
+    '7732-18-5': 'H2O1',
+    '7664-41-7': 'H3N1',
+    '74-82-8': 'C1H4',
+    '74-84-0': 'C2H6',
+    '124-38-9': 'C1O2',
+    '7722-84-1': 'H2O2',
+    '50-00-0': 'C1H2O1',
+    '108-88-3': 'C7H8',
+    '71-43-2': 'C6H6',
+    '7664-93-9': 'H2O4S1',
+    '7647-01-0': 'H1Cl1',
+    '7697-37-2': 'H1N1O3',
+    '67-56-1': 'C1H4O1',
+    '64-17-5': 'C2H6O1',
+  };
+  function lookupCAS(raw) {
+    const cas = raw.trim().replace(/\s+/g, '');
+    const key = CAS_MAP[cas];
+    if (!key) return null;
+    return { key, label: TARGETS.find((t) => t.key === key)?.label || key };
+  }
+
   let atoms = [];
   let bonds = [];
   let nextId = 1;
@@ -286,6 +315,11 @@
     runOptimize();
   }
 
+  // 是否還有「沒最佳化過」的鍵(至少一端不是 rigid)——手動拖曳接鍵之後用這個判斷要不要自動觸發最佳化
+  function hasPendingBonds() {
+    return bonds.some((b) => !(rigidAtoms.has(b.a) && rigidAtoms.has(b.b)));
+  }
+
   function formDist(a, b) {
     return ELEMENTS[a.el].r + ELEMENTS[b.el].r + 34;
   }
@@ -338,17 +372,20 @@
   function cycleBond(b) {
     const a1 = atomById(b.a);
     const a2 = atomById(b.b);
+    let changed = true;
     if (b.order < 3 && derived(a1).unpaired > 0 && derived(a2).unpaired > 0) {
       b.order++;
-      setStatus(`${a1.el}−${a2.el} 升級為${b.order === 2 ? '雙' : '三'}鍵,共用 ${b.order} 對電子。再按一次⚛最佳化更新立體結構與振動模式。`, 'success');
+      setStatus(`${a1.el}−${a2.el} 升級為${b.order === 2 ? '雙' : '三'}鍵,共用 ${b.order} 對電子。正在自動最佳化立體結構與振動模式…`, 'success');
     } else if (b.order > 1) {
       b.order = 1;
-      setStatus(`${a1.el}−${a2.el} 還原為單鍵。`);
+      setStatus(`${a1.el}−${a2.el} 還原為單鍵,正在自動最佳化…`);
     } else {
+      changed = false;
       setStatus('無法升級:兩端原子都必須還有未配對電子才能再共用一對。');
     }
     invalidate3D();
     render();
+    if (changed) runOptimize();
   }
 
   function changeElectron(delta) {
@@ -599,8 +636,6 @@
     }
     optimizing = true;
     const myGen = buildGen; // 記住這輪最佳化屬於哪個世代;中途若換了分子(世代變了)就自我中止
-    const btn = document.getElementById('btn-optimize');
-    btn.disabled = true;
     const E0 = relaxPass(false, 0);
     const t0 = performance.now();
     const frame = () => {
@@ -613,7 +648,6 @@
         requestAnimationFrame(frame);
       } else {
         optimizing = false;
-        btn.disabled = false;
         bonds.forEach((b) => {
           rigidAtoms.add(b.a);
           rigidAtoms.add(b.b);
@@ -1857,7 +1891,7 @@
     if (!wrap) return;
     wrap.innerHTML = '';
     if (!mol3D || modes3D.length === 0) {
-      wrap.innerHTML = '<p class="tiny">按「⚛ 鍵長最佳化」後,這裡會列出這顆分子真正算出來的重要振動模式(依真實原子質量與鍵力常數,對位能面做 Hessian 對角化;簡併模式與雜訊模式已自動省略),動畫會直接顯示在左邊的分子上,下面也會畫出這顆分子的 IR 光譜。</p>';
+      wrap.innerHTML = '<p class="tiny">分子接好鍵、放開滑鼠(或用上面 CAS 查詢/點選常見分子)後會自動最佳化,這裡會列出這顆分子真正算出來的重要振動模式(依真實原子質量與鍵力常數,對位能面做 Hessian 對角化;簡併模式與雜訊模式已自動省略),動畫會直接顯示在左邊的分子上,下面也會畫出這顆分子的 IR 光譜。</p>';
       if (axisWrap) axisWrap.style.display = 'none';
       renderIRChart();
       return;
@@ -2000,7 +2034,7 @@
       const dip = dipoleOf(comp);
       const polarText = dip.mag >= 0.35 ? ',依目前幾何為<b>極性分子</b>' : ',依目前幾何為<b>非極性分子</b>';
       if (allSat && net === 0) {
-        lines.push(`${meter(0)} ✓ <b>${name}</b> — 每個原子都達成八隅體(H 為二隅體),能量低、結構穩定,可以存在${polarText}(先按⚛最佳化再判斷極性才準)。`);
+        lines.push(`${meter(0)} ✓ <b>${name}</b> — 每個原子都達成八隅體(H 為二隅體),能量低、結構穩定,可以存在${polarText}(放開滑鼠會自動最佳化,極性才準)。`);
       } else if (allSat) {
         lines.push(`${meter(Math.max(penalty, 1))} ✓ <b>${name}</b> — 八隅體完成但整體帶電,是離子:能量稍高,通常要和相反電荷的離子一起存在。`);
       } else {
@@ -2070,7 +2104,7 @@
         const { bondsInfo, angles } = geometryInfo();
         if (bondsInfo.length === 0) {
           geomEl.innerHTML =
-            '<h4>目前的幾何:鍵長與鍵角</h4><p class="tiny">接出鍵之後,這裡與畫布上會即時顯示鍵長(相對單位)與鍵角;按「⚛ 鍵長最佳化」讓它們收斂到平衡值,並換算成真實的 Å 與立體角度。</p>';
+            '<h4>目前的幾何:鍵長與鍵角</h4><p class="tiny">接出鍵之後,這裡與畫布上會即時顯示鍵長(相對單位)與鍵角;放開滑鼠就會自動最佳化收斂到平衡值,並換算成真實的 Å 與立體角度。</p>';
         } else {
           const bl = bondsInfo
             .map((b) => `${b.label}:${b.len.toFixed(0)}(平衡 ${b.r0.toFixed(0)})`)
@@ -2297,7 +2331,27 @@
 
     buildPalette();
     document.getElementById('lewis-clear').addEventListener('click', clearAll);
-    document.getElementById('btn-optimize').addEventListener('click', runOptimize);
+
+    const casInput = document.getElementById('cas-input');
+    const casStatus = document.getElementById('cas-status');
+    function runCasSearch() {
+      const found = lookupCAS(casInput.value);
+      if (!found) {
+        casStatus.textContent = casInput.value.trim()
+          ? `查無此 CAS 號——目前只收錄上面看得到的常見分子清單(共 ${TARGETS.length} 種),還沒辦法查任意化合物。`
+          : '請輸入 CAS 登記號,例如 7732-18-5(水)。';
+        casStatus.className = 'tiny';
+        return;
+      }
+      casStatus.textContent = `找到 CAS ${casInput.value.trim()} → ${found.label},正在生成…`;
+      casStatus.className = 'tiny status-line success';
+      buildPresetMolecule(found.key);
+    }
+    document.getElementById('cas-search-btn').addEventListener('click', runCasSearch);
+    casInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') runCasSearch();
+    });
+
     const cloudBtn = document.getElementById('btn-cloud');
     cloudBtn.addEventListener('click', () => {
       cloudOn = !cloudOn;
@@ -2389,6 +2443,9 @@
       } else if (trashHover) {
         trashHover = false;
         render();
+      } else if (drag && drag.moved && hasPendingBonds() && !optimizing) {
+        // 放開滑鼠時,只要畫布上還有沒最佳化過的鍵,就直接自動最佳化,不用另外按按鈕
+        runOptimize();
       }
       drag = null;
     };

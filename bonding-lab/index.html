@@ -4,14 +4,14 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>化學鍵結互動教學 — 共價鍵形成 與 LCAO 分子軌域理論</title>
-<link rel="stylesheet" href="style.css?v=21" />
+<link rel="stylesheet" href="style.css?v=22" />
 </head>
 <body>
 
 <header class="app-header">
   <div class="header-row">
     <figure class="pauling-fig">
-      <img src="pauling.png?v=21" alt="Linus Pauling" class="pauling-img"
+      <img src="pauling.png?v=22" alt="Linus Pauling" class="pauling-img"
            onerror="if(!this.dataset.f){this.dataset.f=1;this.src='https://commons.wikimedia.org/wiki/Special:FilePath/Linus%20Pauling%201962.jpg?width=300';}else{this.onerror=null;this.src='pauling.svg';}" />
       <figcaption>Linus Pauling<br>《化學鍵的本質》</figcaption>
     </figure>
@@ -38,12 +38,14 @@
 
       <div class="lewis-center">
         <p id="energy-header" class="energy-header" style="display:none"></p>
+        <div class="cas-lookup">
+          <label for="cas-input">CAS 登記號查詢</label>
+          <input type="text" id="cas-input" placeholder="例如 7732-18-5(水)" autocomplete="off" />
+          <button id="cas-search-btn" class="tool-btn" type="button">🔍 查詢並生成</button>
+          <p id="cas-status" class="tiny"></p>
+        </div>
         <div class="target-chips" id="target-chips"></div>
         <div class="canvas-tools">
-          <button id="btn-optimize" class="tool-btn"
-            title="簡化版的量子化學幾何優化(概念上類似 Hartree–Fock):把鍵長調到能量最低的平衡距離,鍵角依電子對互斥(VSEPR)展開,並顯示能量下降的過程">
-            ⚛ 鍵長最佳化（簡易計算）
-          </button>
           <button id="btn-cloud" class="tool-btn"
             title="以半透明模糊雲顯示價電子密度:紅=δ−(電子密度高)、藍=δ+(電子密度低),並畫出淨偶極箭頭判斷極性分子">
             ☁ 電子雲與極性
@@ -104,8 +106,9 @@
           <summary>📖 操作說明</summary>
           <p class="tiny">
             把原子從原子盒<b>拖進畫布</b>（點一下也會自動放入）。拖兩個原子靠近，未配對電子會配成<b>共用電子對</b>形成共價鍵；
-            點鍵可升級雙鍵／三鍵；拖遠斷鍵；拖到右下角垃圾桶刪除。
+            點鍵可升級雙鍵／三鍵；拖遠斷鍵；拖到右下角垃圾桶刪除。放開滑鼠就會自動最佳化鍵長與立體結構，不用另外按按鈕。
             點選原子看形式電荷並可增減電子做離子。能量條顯示結構穩定度——只有能量低的穩定結構才會存在。
+            也可以直接在上面輸入 CAS 登記號查詢常見分子。
           </p>
         </details>
         <details class="info-card">
@@ -258,8 +261,8 @@
   <p>多數圖示為教學用簡化示意；「H₂ Hartree–Fock」面板為真實的從頭計算（RHF／STO-3G）。</p>
 </footer>
 
-<script src="main.js?v=21"></script>
-<script src="lewis.js?v=21"></script>
-<script src="lcao.js?v=21"></script>
+<script src="main.js?v=22"></script>
+<script src="lewis.js?v=22"></script>
+<script src="lcao.js?v=22"></script>
 </body>
 </html>

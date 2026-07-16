@@ -166,6 +166,28 @@ main { max-width: 1280px; margin: 0 auto; padding: 20px; }
   touch-action: none;
 }
 
+.cas-lookup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: var(--accent-soft);
+  border: 1px solid #cdd7fa;
+  border-radius: 10px;
+}
+.cas-lookup label { font-size: 0.82rem; color: #2a3560; font-weight: 600; white-space: nowrap; }
+.cas-lookup input {
+  flex: 1 1 160px;
+  min-width: 140px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+.cas-lookup #cas-status { flex-basis: 100%; margin: 2px 0 0; }
+
 .target-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 
 .canvas-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
