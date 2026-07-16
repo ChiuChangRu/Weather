@@ -45,7 +45,7 @@
   function bondParams(e1, e2, order) {
     return BOND_PARAMS[[e1, e2].sort().join('') + '-' + order] || { len: 1.4, k: 4.5 };
   }
-  const LONE_WEIGHT = 1.35; // 孤對電子排斥比鍵結電子對強(VSEPR)
+  const LONE_WEIGHT = 1.3; // 孤對電子排斥比鍵結電子對強(VSEPR)
   const ANGLE_K = 0.55; // mdyn·Å,通用彎曲力常數(簡化)
 
   const SUBSCRIPT = { 0: '₀', 1: '₁', 2: '₂', 3: '₃', 4: '₄', 5: '₅', 6: '₆', 7: '₇', 8: '₈', 9: '₉' };
@@ -57,6 +57,7 @@
     { key: 'H2O1', label: 'H₂O 水' },
     { key: 'H3N1', label: 'NH₃ 氨' },
     { key: 'C1H4', label: 'CH₄ 甲烷' },
+    { key: 'C2H6', label: 'C₂H₆ 乙烷' },
     { key: 'C1O2', label: 'CO₂ 二氧化碳' },
     { key: 'H2O2', label: 'H₂O₂ 過氧化氫' },
     { key: 'C1H2O1', label: 'CH₂O 甲醛' },
@@ -70,6 +71,7 @@
     H2O1: { els: ['O', 'H', 'H'], bonds: [[0, 1, 1], [0, 2, 1]] },
     H3N1: { els: ['N', 'H', 'H', 'H'], bonds: [[0, 1, 1], [0, 2, 1], [0, 3, 1]] },
     C1H4: { els: ['C', 'H', 'H', 'H', 'H'], bonds: [[0, 1, 1], [0, 2, 1], [0, 3, 1], [0, 4, 1]] },
+    C2H6: { els: ['C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'], bonds: [[0, 1, 1], [0, 2, 1], [0, 3, 1], [0, 4, 1], [1, 5, 1], [1, 6, 1], [1, 7, 1]] },
     C1O2: { els: ['C', 'O', 'O'], bonds: [[0, 1, 2], [0, 2, 2]] },
     H2O2: { els: ['O', 'O', 'H', 'H'], bonds: [[0, 1, 1], [0, 2, 1], [1, 3, 1]] },
     C1H2O1: { els: ['C', 'H', 'H', 'O'], bonds: [[0, 1, 1], [0, 2, 1], [0, 3, 2]] },
@@ -979,7 +981,19 @@
       return a.x * b.x + a.y * b.y + a.z * b.z;
     }
 
-    const STEPS = 1400;
+    // 立體互斥的排除表:1-2(直接鍵結)與 1-3(同一中心的兩個鄰居)不算立體障礙,
+    // 剩下的原子對(1-4 以上,或不同分子)才吃 van der Waals 短距互斥
+    const pairKey = (i, j) => (i < j ? `${i}-${j}` : `${j}-${i}`);
+    const stericExcluded = new Set();
+    bonds.forEach((b) => stericExcluded.add(pairKey(b.a, b.b)));
+    atoms.forEach((c) => {
+      const nb = nbIds.get(c.id);
+      for (let i = 0; i < nb.length; i++)
+        for (let j = i + 1; j < nb.length; j++) stericExcluded.add(pairKey(nb[i], nb[j]));
+    });
+    const STERIC_R = { H: 1.3, C: 1.45, N: 1.42, O: 1.38 }; // 近似 vdW 半徑(Å)
+
+    const STEPS = 2200;
     for (let step = 0; step < STEPS; step++) {
       const stepScale = 1 - step / STEPS;
       // 鍵長彈簧(真實 Å)
@@ -1028,34 +1042,43 @@
           const f = forces[i];
           const radial = f.x * dom.dir.x + f.y * dom.dir.y + f.z * dom.dir.z;
           const tx = f.x - radial * dom.dir.x, ty = f.y - radial * dom.dir.y, tz = f.z - radial * dom.dir.z;
-          const rate = 0.02 + 0.12 * stepScale;
+          const rate = 0.03 + 0.12 * stepScale;
           dom.dir = norm({ x: dom.dir.x + tx * rate, y: dom.dir.y + ty * rate, z: dom.dir.z + tz * rate });
         });
+        // 把鄰居「柔性拉」向理想位置,而不是硬生生瞬移過去——
+        // 多中心分子(如乙烷)裡,共用的原子會被兩個中心各自認領:
+        // 硬瞬移等於後處理的中心整碗端走、前一個中心排好的幾何被毀掉,
+        // 兩邊永遠打架收斂不了(乙烷角度塌到 96° 的元凶就是這個)。
+        // 柔性混合讓所有中心逐步協商出同時滿足彼此的折衷結構。
+        const blend = 0.22 + 0.4 * stepScale;
         domains.forEach((d) => {
           if (d.kind === 'real') {
             const p = bondParams(c.el, byId.get(d.id).el, (bonds.find((b) => (b.a === c.id && b.b === d.id) || (b.b === c.id && b.a === d.id)) || {}).order || 1);
             const target = byId.get(d.id);
-            target.x = cPos.x + d.dir.x * p.len;
-            target.y = cPos.y + d.dir.y * p.len;
-            target.z = cPos.z + d.dir.z * p.len;
+            target.x += (cPos.x + d.dir.x * p.len - target.x) * blend;
+            target.y += (cPos.y + d.dir.y * p.len - target.y) * blend;
+            target.z += (cPos.z + d.dir.z * p.len - target.z) * blend;
           } else {
             lone[d.i] = d.dir;
           }
         });
       });
-      // 非鍵結原子間輕微排斥,避免不同分子/片段重疊
+      // 立體障礙(van der Waals 短距互斥):只作用在相隔三根鍵以上的原子對
+      // (1-2 鍵長歸彈簧管、1-3 角度歸 VSEPR 管,都排除)。
+      // 乙烷兩端的 H 若靠太近(重疊式)會被推開,扭轉角因此自然轉向交錯式(staggered)
+      // ——這正是真實乙烷交錯構型的立體互斥成因,不是硬套的扭轉角度表。
       for (let i = 0; i < real.length; i++) {
         for (let j = i + 1; j < real.length; j++) {
           const a1 = real[i], a2 = real[j];
-          if (bondBetween(a1.id, a2.id)) continue;
-          const minD = 1.6;
+          if (stericExcluded.has(pairKey(a1.id, a2.id))) continue;
+          const rmin = STERIC_R[a1.el] + STERIC_R[a2.el];
           const d = sub(a2, a1);
           const len = Math.hypot(d.x, d.y, d.z) || 1e-6;
-          if (len < minD) {
-            const s = ((minD - len) * 0.15 * stepScale) / len;
-            a1.x -= d.x * s; a1.y -= d.y * s; a1.z -= d.z * s;
-            a2.x += d.x * s; a2.y += d.y * s; a2.z += d.z * s;
-          }
+          if (len >= rmin) continue;
+          const push = Math.min(0.12, (rmin - len) * 0.35 * stepScale);
+          const s = push / len;
+          a1.x -= d.x * s; a1.y -= d.y * s; a1.z -= d.z * s;
+          a2.x += d.x * s; a2.y += d.y * s; a2.z += d.z * s;
         }
       }
     }
