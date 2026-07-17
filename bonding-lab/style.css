@@ -196,6 +196,15 @@ main { max-width: 1280px; margin: 0 auto; padding: 20px; }
   color: var(--text);
 }
 #plastic-select { border-color: #c9a8e0; color: #6b4fa0; }
+.plastic-n-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #6b4fa0;
+  flex: 0 0 auto;
+}
+.plastic-n-select { flex: 0 0 60px; min-width: 60px; padding: 7px 6px; border-color: #c9a8e0; color: #6b4fa0; }
 
 .canvas-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .tool-btn {
@@ -270,12 +279,16 @@ main { max-width: 1280px; margin: 0 auto; padding: 20px; }
   border-radius: 12px;
   padding: 12px;
   overflow-y: auto;
+  /* 沒有上限的話,align-items:stretch 會讓整排跟著振動模式清單的內容高度撐開——
+     塑膠代表分子原子數多、振動模式可以到 60 個以上,整頁會被拉得很長、
+     3D 結構反而被擠到最上面一小塊。設上限,清單內部自己捲動就好。 */
+  max-height: 620px;
 }
 .vib-side h4 { margin: 0 0 4px; font-size: 0.9rem; }
 .vib-side #vib-mode-list { flex-direction: column; }
 @media (max-width: 860px) {
   .stage-and-modes { flex-direction: column; }
-  .vib-side { flex: 1 1 auto; }
+  .vib-side { flex: 1 1 auto; max-height: 320px; }
 }
 
 .info-panel { display: flex; flex-direction: column; gap: 12px; }

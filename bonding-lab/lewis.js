@@ -79,6 +79,117 @@
     { key: 'C2H6O1', label: 'C₂H₅OH 乙醇' },
   ];
 
+  // ---- 塑膠代表分子的「單體重複數 N」鏈狀產生器 ----
+  // 只對「加成聚合、重複單元結構單純」的塑膠開放(PE/PP/PVC/PS/PMMA/PEG):
+  // 骨架是 -CH2-CHX- 交替的碳鏈(PEG 則是 -CH2-CH2-O- 的醚鏈),依 N 動態產生
+  // els/bonds,不是固定寫死的單一結構。ABS/TPU/PVP 是共聚合物或機能基代表,
+  // 沒有單純可重複的小分子鏈,維持固定的代表結構,不提供 N 選項。
+  const FRAG = {
+    methyl: () => ({ els: ['C', 'H', 'H', 'H'], bonds: [[0, 1, 1], [0, 2, 1], [0, 3, 1]], attach: 0 }),
+    chloro: () => ({ els: ['Cl'], bonds: [], attach: 0 }),
+    // 單取代苯環:ipso 碳(index 0)沒有 H,留給骨架接;其餘 5 顆環碳各接 1 個 H
+    phenyl: () => ({
+      els: ['C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H'],
+      bonds: [[0, 1, 2], [1, 2, 1], [2, 3, 2], [3, 4, 1], [4, 5, 2], [5, 0, 1], [1, 6, 1], [2, 7, 1], [3, 8, 1], [4, 9, 1], [5, 10, 1]],
+      attach: 0,
+    }),
+    // 甲酯基 -C(=O)-O-CH3
+    ester: () => ({
+      els: ['C', 'O', 'O', 'C', 'H', 'H', 'H'],
+      bonds: [[0, 1, 2], [0, 2, 1], [2, 3, 1], [3, 4, 1], [3, 5, 1], [3, 6, 1]],
+      attach: 0,
+    }),
+  };
+
+  // 骨架碳鏈:2N 顆碳,每顆碳依 branchFragsAt(i) 決定要不要掛支鏈,其餘用 H 補滿價數
+  function chainBackbone(n, branchFragsAt) {
+    const nC = 2 * n;
+    const els = [];
+    const bonds = [];
+    for (let i = 0; i < nC; i++) els.push('C');
+    for (let i = 0; i < nC - 1; i++) bonds.push([i, i + 1, 1]);
+    let next = nC;
+    for (let i = 0; i < nC; i++) {
+      const chainNb = i === 0 || i === nC - 1 ? 1 : 2;
+      let used = chainNb;
+      (branchFragsAt(i) || []).forEach((mk) => {
+        const frag = mk();
+        const base = next;
+        frag.els.forEach((e) => els.push(e));
+        frag.bonds.forEach(([a, b, o]) => bonds.push([base + a, base + b, o]));
+        bonds.push([i, base + frag.attach, 1]);
+        next += frag.els.length;
+        used += 1;
+      });
+      const hCount = 4 - used;
+      for (let k = 0; k < hCount; k++) {
+        els.push('H');
+        bonds.push([i, next, 1]);
+        next++;
+      }
+    }
+    return { els, bonds };
+  }
+
+  function genPE(n) { return chainBackbone(n, () => []); }
+  function genPP(n) { return chainBackbone(n, (i) => (i % 2 === 1 ? [FRAG.methyl] : [])); }
+  function genPVC(n) { return chainBackbone(n, (i) => (i % 2 === 1 ? [FRAG.chloro] : [])); }
+  function genPS(n) { return chainBackbone(n, (i) => (i % 2 === 1 ? [FRAG.phenyl] : [])); }
+  function genPMMA(n) { return chainBackbone(n, (i) => (i % 2 === 1 ? [FRAG.methyl, FRAG.ester] : [])); }
+
+  // Glyme 系列(甘醇二甲醚):CH3-O-(CH2-CH2-O)n-CH3——單/二/三/四甘醇二甲醚都是真實存在的溶劑,
+  // 拿來當 PEG 的 -(CH2CH2O)n- 醚鏈骨架代表,N 越大鏈越長、兩端一樣是甲基封端(無端基 OH,跟原本的
+  // 1,2-二甲氧基乙烷 N=1 版本一致)。
+  function genPEG(n) {
+    const els = [];
+    const bonds = [];
+    let next = 0;
+    const addAtom = (elSym) => { els.push(elSym); return next++; };
+    const oIdx = [addAtom('O')];
+    const cIdx = [];
+    for (let u = 0; u < n; u++) {
+      const c1 = addAtom('C'), c2 = addAtom('C');
+      bonds.push([oIdx[oIdx.length - 1], c1, 1]);
+      bonds.push([c1, c2, 1]);
+      cIdx.push(c1, c2);
+      const o2 = addAtom('O');
+      bonds.push([c2, o2, 1]);
+      oIdx.push(o2);
+    }
+    [oIdx[0], oIdx[oIdx.length - 1]].forEach((oi) => {
+      const c = addAtom('C');
+      bonds.push([oi, c, 1]);
+      for (let k = 0; k < 3; k++) {
+        const h = addAtom('H');
+        bonds.push([c, h, 1]);
+      }
+    });
+    cIdx.forEach((ci) => {
+      for (let k = 0; k < 2; k++) {
+        const h = addAtom('H');
+        bonds.push([ci, h, 1]);
+      }
+    });
+    return { els, bonds };
+  }
+
+  // 塑膠代表分子的顯示名稱:chainGen 支援的用「骨架描述 + 目前 N + 分子式」,固定結構的用寫死的 analogName
+  function plasticAnalogLabel(key) {
+    const p = PLASTICS[key];
+    if (!p) return '';
+    if (p.chainGen) {
+      const spec = p.chainGen(currentPlasticN || 1);
+      return `${p.chainDesc},N=${currentPlasticN}(${formulaOf(spec)})`;
+    }
+    return p.analogName;
+  }
+
+  function formulaOf(spec) {
+    const counts = {};
+    spec.els.forEach((e) => { counts[e] = (counts[e] || 0) + 1; });
+    return formulaDisplay(counts);
+  }
+
   // ---- 常見塑膠的 IR 特徵峰(文獻參考值,不是即時計算) ----
   // 塑膠是長鏈高分子(重複單元上千個),不是這個引擎設計來處理的小分子,VSEPR/Hessian
   // 物理沒辦法、也不該假裝去「算」一條無限長的鏈子。這裡誠實地改用文獻上公認的
@@ -87,7 +198,7 @@
   const PLASTICS = {
     PE: {
       label: 'PE 聚乙烯', full: '聚乙烯(Polyethylene)', uses: '塑膠袋、保鮮膜、水管(回收碼 2/4)',
-      presetKey: 'PE_ANALOG', analogName: '丁烷(C₄H₁₀)——PE 的 -(CH₂)n- 骨架代表',
+      presetKey: 'PE_ANALOG', analogName: '丁烷(C₄H₁₀)——PE 的 -(CH₂)n- 骨架代表', chainGen: genPE, chainDesc: 'PE 的 -(CH₂-CH₂)n- 骨架代表(兩端補 H 封端)',
       peaks: [
         { freq: 2915, strength: 0.9, note: 'CH₂ 不對稱伸縮' },
         { freq: 2848, strength: 0.85, note: 'CH₂ 對稱伸縮' },
@@ -98,7 +209,7 @@
     },
     PP: {
       label: 'PP 聚丙烯', full: '聚丙烯(Polypropylene)', uses: '食品容器、吸管、瓶蓋(回收碼 5)',
-      presetKey: 'PP_ANALOG', analogName: '2-甲基丁烷/異戊烷(C₅H₁₂)——PP 甲基取代骨架代表',
+      presetKey: 'PP_ANALOG', analogName: '2-甲基丁烷/異戊烷(C₅H₁₂)——PP 甲基取代骨架代表', chainGen: genPP, chainDesc: 'PP 的 -(CH₂-CH(CH₃))n- 甲基取代骨架代表(兩端補 H 封端)',
       peaks: [
         { freq: 2950, strength: 0.7, note: 'CH₃ 不對稱伸縮' },
         { freq: 2917, strength: 0.8, note: 'CH₂ 不對稱伸縮' },
@@ -125,7 +236,7 @@
     },
     PVC: {
       label: 'PVC 聚氯乙烯', full: '聚氯乙烯(Polyvinyl chloride)', uses: '水管、雨衣、地板材(回收碼 3)',
-      presetKey: 'PVC_ANALOG', analogName: '1-氯丙烷(C₃H₇Cl)——PVC 的 C−Cl 骨架代表',
+      presetKey: 'PVC_ANALOG', analogName: '1-氯丙烷(C₃H₇Cl)——PVC 的 C−Cl 骨架代表', chainGen: genPVC, chainDesc: 'PVC 的 -(CH₂-CHCl)n- 骨架代表(兩端補 H 封端)',
       peaks: [
         { freq: 2971, strength: 0.4, note: 'C−H 伸縮' },
         { freq: 2913, strength: 0.45, note: 'C−H 伸縮' },
@@ -139,7 +250,7 @@
     },
     PMMA: {
       label: 'PMMA 壓克力', full: '聚甲基丙烯酸甲酯(Polymethyl methacrylate)', uses: '壓克力板、有機玻璃、隱形眼鏡',
-      presetKey: 'PMMA_ANALOG', analogName: '特戊酸甲酯 methyl pivalate(C₆H₁₂O₂)——PMMA 四級碳+酯基代表',
+      presetKey: 'PMMA_ANALOG', analogName: '特戊酸甲酯 methyl pivalate(C₆H₁₂O₂)——PMMA 四級碳+酯基代表', chainGen: genPMMA, chainDesc: 'PMMA 的 -(CH₂-C(CH₃)(COOCH₃))n- 四級碳+酯基骨架代表(兩端補 H 封端)',
       peaks: [
         { freq: 2995, strength: 0.45, note: 'O−CH₃ / CH₂ 伸縮' },
         { freq: 2950, strength: 0.4, note: 'C−H 伸縮' },
@@ -192,7 +303,7 @@
     },
     PEG: {
       label: 'PEG 聚乙二醇', full: '聚乙二醇(Polyethylene glycol)', uses: '藥物/化妝品賦形劑、保濕劑、PEG 化藥物',
-      presetKey: 'PEG_ANALOG', analogName: '1,2-二甲氧基乙烷(C₄H₁₀O₂)——PEG 的 C−O−C 醚鍵骨架代表(無端基 OH)',
+      presetKey: 'PEG_ANALOG', analogName: '1,2-二甲氧基乙烷(C₄H₁₀O₂)——PEG 的 C−O−C 醚鍵骨架代表(無端基 OH)', chainGen: genPEG, chainDesc: 'PEG 的 -(CH₂-CH₂-O)n- 醚鏈骨架代表,甲基封端(glyme 系列,無端基 OH)',
       peaks: [
         { freq: 3400, strength: 0.4, note: 'O−H 伸縮(端基,寬峰)' },
         { freq: 2880, strength: 0.6, note: 'C−H 伸縮' },
@@ -323,6 +434,7 @@
   const TRASH = { x: STAGE_W - 54, y: STAGE_H - 54, r: 32 };
   const doneTargets = new Set();
   let currentPlastic = null; // 目前選的塑膠(文獻參考模式);一旦開始操作分子畫布就會清掉
+  let currentPlasticN = 4; // 目前的單體重複數 N(只對 chainGen 支援的塑膠有意義)
 
   let stage, statusEl, readoutEl, chipsEl, selPanelEl;
 
@@ -445,8 +557,10 @@
   }
 
   // 一鍵生成上方清單裡的常見分子,不用自己拖,並自動跑最佳化直接看立體結構/振動/IR
-  function buildPresetMolecule(key) {
-    const spec = PRESETS[key];
+  // specOverride/labelOverride 讓塑膠的「N 單體鏈長」動態產生的結構也能走同一套建構+最佳化流程,
+  // 不必為每個 N 都預先寫死一份 PRESETS
+  function buildPresetMolecule(key, specOverride, labelOverride) {
+    const spec = specOverride || PRESETS[key];
     if (!spec) return;
     clearAll();
     const cx = STAGE_W / 2, cy = STAGE_H / 2;
@@ -464,7 +578,7 @@
     spec.bonds.forEach(([i, j, order]) => {
       bonds.push({ a: newIds[i], b: newIds[j], order });
     });
-    const label = TARGETS.find((t) => t.key === key)?.label || key;
+    const label = labelOverride || TARGETS.find((t) => t.key === key)?.label || key;
     setStatus(`已直接生成 ${label},正在自動最佳化…`, 'success');
     render();
     runOptimize();
@@ -640,6 +754,7 @@
     renderEnergyHeader();
     renderIRChart();
     render();
+    updatePlasticNControl();
   }
 
   // ---- 簡易能量最小化(鍵長/鍵角最佳化) ----
@@ -1384,7 +1499,10 @@
     // 實測過:不對稱時徑向推擠會把四面體角度弄壞,只有對稱(如乙烷 3 對 3)才會
     // 自然轉成交錯式而不傷角度。同一個環(以及環上的取代基)也整組排除,
     // 苯環是剛性平面,不需要立體推擠,加了反而會把 120° 弄歪。
-    const pairKey = (i, j) => (i < j ? `${i}-${j}` : `${j}-${i}`);
+    // 用數字鍵而不是字串鍵(避免每一步、每一對原子都重新配置字串再雜湊——
+    // 大分子如塑膠 N=4 代表結構有 60+ 顆原子,C(60,2)≈1800 對、乘上 3200 步、
+    // 乘上 12 次嘗試,字串版本量測起來要 12 秒以上,數字鍵可以省掉這筆開銷)
+    const pairKey = (i, j) => (i < j ? i * 1000000 + j : j * 1000000 + i);
     const stericExcluded = new Set();
     bonds.forEach((b) => stericExcluded.add(pairKey(b.a, b.b)));
     atoms.forEach((c) => {
@@ -1423,14 +1541,27 @@
     });
     const STERIC_R = { H: 1.3, C: 1.45, N: 1.42, O: 1.38, S: 1.8, Cl: 1.75 }; // 近似 vdW 半徑(Å)
 
-    const STEPS = 3200;
+    // 鍵長/力常數查表:bondParams() 每次呼叫都要重新配置陣列、排序、拼字串當 key,
+    // 鬆弛迴圈裡每一步、每根鍵的兩個方向都會呼叫到——大分子(如塑膠 N=4 代表結構,
+    // 60+ 顆原子)乘上 3200 步、12 次嘗試,會呼叫到近千萬次,光是字串配置就佔掉大半時間。
+    // 鍵的兩端元素與鍵級在鬆弛過程中不會變,先算好存進 Map,查詢變 O(1) 純數字比對。
+    const bondParamsOf = new Map();
+    bonds.forEach((b) => {
+      const a1 = byId.get(b.a), a2 = byId.get(b.b);
+      const p = bondParams(a1.el, a2.el, b.order);
+      bondParamsOf.set(pairKey(b.a, b.b), p);
+    });
+
+    // 大分子每步成本高(O(atoms²)的立體排斥迴圈),步數也跟著往下調一點,
+    // 跟 build3DGeometry() 的嘗試次數調整合起來,把等待時間壓在可接受範圍。
+    const STEPS = atoms.length <= 25 ? 3200 : atoms.length <= 40 ? 2600 : atoms.length <= 55 ? 2200 : 1800;
     for (let step = 0; step < STEPS; step++) {
       const stepScale = 1 - step / STEPS;
       // 鍵長彈簧(真實 Å)
       bonds.forEach((b) => {
         const a1 = byId.get(b.a);
         const a2 = byId.get(b.b);
-        const p = bondParams(a1.el, a2.el, b.order);
+        const p = bondParamsOf.get(pairKey(b.a, b.b));
         const d = sub(a2, a1);
         const len = Math.hypot(d.x, d.y, d.z) || 1e-6;
         const err = len - p.len;
@@ -1483,7 +1614,7 @@
         const blend = 0.22 + 0.4 * stepScale;
         domains.forEach((d) => {
           if (d.kind === 'real') {
-            const p = bondParams(c.el, byId.get(d.id).el, (bonds.find((b) => (b.a === c.id && b.b === d.id) || (b.b === c.id && b.a === d.id)) || {}).order || 1);
+            const p = bondParamsOf.get(pairKey(c.id, d.id));
             const target = byId.get(d.id);
             target.x += (cPos.x + d.dir.x * p.len - target.x) * blend;
             target.y += (cPos.y + d.dir.y * p.len - target.y) * blend;
@@ -1545,7 +1676,11 @@
   // 用電子群互斥能量挑出排得最開(最像教科書 VSEPR 形狀)的一次,同一顆分子每次選單
   // 點開結果才會穩定一致。
   function build3DGeometry() {
-    const ATTEMPTS = 12;
+    // 每次嘗試的成本大致是 O(atoms²×steps)——塑膠 N=4 代表結構可到 60+ 顆原子,
+    // 固定 12 次嘗試會拖到好幾秒;原子數越多,嘗試次數往下調,讓等待時間大致穩定,
+    // 小分子仍保留足夠嘗試次數維持收斂品質。
+    const nAtoms = atoms.length;
+    const ATTEMPTS = nAtoms <= 25 ? 12 : nAtoms <= 40 ? 8 : nAtoms <= 55 ? 5 : 3;
     let best = null;
     let bestE = Infinity;
     for (let i = 0; i < ATTEMPTS; i++) {
@@ -1939,6 +2074,14 @@
     });
 
     // 真實鍵長(Å)標示(用未加振動位移的基準座標,避免文字跟著抖動)
+    // 塑膠代表分子原子數多(可到 20 顆以上),鍵長/鍵角文字會擠成一團看不清楚,
+    // 又把畫面拉得很長——塑膠模式跳過這些標示,只看立體形狀就好。
+    if (currentPlastic) {
+      const hint = el('text', { x: slot.cx, y: slot.cy + slot.scale + 26, 'text-anchor': 'middle', 'font-size': 11, fill: '#98a1b3' });
+      hint.textContent = '拖曳可旋轉立體結構';
+      layer.appendChild(hint);
+      return;
+    }
     const basePos = mol3D.atoms.map((a) => ({ ...a, proj: project3D(a) }));
     const baseById = new Map(basePos.map((p) => [p.id, p]));
     mol3D.bonds.forEach((b) => {
@@ -2068,15 +2211,41 @@
   }
 
   // 塑膠 IR 圖:純文獻參考特徵峰(紫色標示以區別於真實計算的黑色曲線),不疊黑體輻射、不判溫室效應
-  function showPlastic(key) {
+  function showPlastic(key, n) {
     const p = PLASTICS[key];
-    if (!p || !PRESETS[p.presetKey]) return;
-    buildPresetMolecule(p.presetKey);
+    if (!p) return;
+    let spec, label;
+    if (p.chainGen) {
+      const useN = n || currentPlasticN || 1;
+      spec = p.chainGen(useN);
+      label = `${p.label}(N=${useN}:${formulaOf(spec)})`;
+      currentPlasticN = useN;
+    } else {
+      spec = PRESETS[p.presetKey];
+      label = p.label;
+    }
+    if (!spec) return;
+    buildPresetMolecule(p.presetKey, spec, label);
     currentPlastic = key; // buildPresetMolecule 內部的 clearAll() 會清成 null,要在它跑完之後才設定
     setStatus(
-      `已切換到塑膠參考模式:${p.label}。用「${p.analogName}」當代表結構,真的算出 3D 結構與振動模式——正在自動最佳化…`,
+      `已切換到塑膠參考模式:${p.label}。用「${plasticAnalogLabel(key)}」當代表結構,真的算出 3D 結構與振動模式——正在自動最佳化…`,
       'success'
     );
+    updatePlasticNControl();
+  }
+
+  // N 選單只在目前塑膠支援鏈長調整(chainGen)時顯示;不支援的(ABS/TPU/PVP)固定用單一代表結構
+  function updatePlasticNControl() {
+    const wrap = document.getElementById('plastic-n-wrap');
+    if (!wrap) return;
+    const p = currentPlastic && PLASTICS[currentPlastic];
+    if (p && p.chainGen) {
+      wrap.style.display = '';
+      const sel = document.getElementById('plastic-n-select');
+      if (sel && sel.value !== String(currentPlasticN)) sel.value = String(currentPlasticN);
+    } else {
+      wrap.style.display = 'none';
+    }
   }
 
   function renderIRChart() {
@@ -2196,12 +2365,13 @@
     wrap.innerHTML = '';
     if (currentPlastic) {
       const p = PLASTICS[currentPlastic];
+      const analogLabel = plasticAnalogLabel(currentPlastic);
       if (sideTitle) sideTitle.textContent = '🎵 振動模式(代表分子)';
-      if (sideDesc) sideDesc.textContent = `${p.analogName} 的真實振動模式,點一下播放`;
+      if (sideDesc) sideDesc.textContent = `${analogLabel} 的真實振動模式,點一下播放`;
       const info = document.createElement('p');
       info.className = 'tiny';
       info.innerHTML =
-        `<b>${p.full}</b><br>常見用途:${p.uses}<br>代表結構:<b>${p.analogName}</b><br><br>` +
+        `<b>${p.full}</b><br>常見用途:${p.uses}<br>代表結構:<b>${analogLabel}</b><br><br>` +
         `塑膠是長鏈高分子(重複單元上千個),不是這個引擎設計來處理的小分子——左邊改用這顆真正算出 3D 結構與振動模式的小分子,` +
         `抓住最主要的官能基特徵。下面 IR 圖黑線是這顆代表分子的即時計算結果,紫色虛線是文獻上這種塑膠真正的特徵峰,` +
         `兩者對照可以看出小分子模型跟真實高分子鏈的差異有多大。`;
@@ -2407,7 +2577,11 @@
     // 幾何面板:鍵長與鍵角
     const geomEl = document.getElementById('geom-panel');
     if (geomEl) {
-      if (mol3D) {
+      if (currentPlastic) {
+        // 塑膠代表分子原子數多,列出每一根鍵長、每個角度會很長一串、看起來太複雜——
+        // 塑膠模式只看立體形狀跟振動模式就好,鍵長鍵角細節留給小分子模式。
+        geomEl.innerHTML = `<h4>真實立體幾何(3D)</h4><p class="tiny">塑膠代表分子原子較多,鍵長/鍵角細節省略,拖曳左邊的 3D 結構看整體形狀就好。</p>`;
+      } else if (mol3D) {
         const bl3 = mol3D.bonds
           .map((b) => {
             const a1 = mol3D.atoms.find((a) => a.id === b.a);
@@ -2675,10 +2849,12 @@
     document.getElementById('lewis-clear').addEventListener('click', clearAll);
 
     const plasticSelect = document.getElementById('plastic-select');
+    const plasticNSelect = document.getElementById('plastic-n-select');
     chipsEl.addEventListener('change', () => {
       if (chipsEl.value) {
         buildPresetMolecule(chipsEl.value);
         if (plasticSelect) plasticSelect.value = '';
+        updatePlasticNControl();
       }
     });
     if (plasticSelect) {
@@ -2697,6 +2873,16 @@
         if (plasticSelect.value) {
           showPlastic(plasticSelect.value);
           chipsEl.value = '';
+        } else {
+          updatePlasticNControl();
+        }
+      });
+    }
+    if (plasticNSelect) {
+      plasticNSelect.value = String(currentPlasticN);
+      plasticNSelect.addEventListener('change', () => {
+        if (currentPlastic && PLASTICS[currentPlastic]?.chainGen) {
+          showPlastic(currentPlastic, Number(plasticNSelect.value));
         }
       });
     }
