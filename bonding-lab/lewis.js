@@ -1170,7 +1170,48 @@
 
   // 用目前的 2D 連接關係(bonds/atoms)建立一組獨立的 3D 座標,
   // 以電子群排斥(VSEPR)+ 真實鍵長彈簧,從隨機起點鬆弛到平衡結構
-  function build3DGeometry() {
+  // 電子群互斥能量(跟鬆弛迴圈用同一套 Thomson 問題公式):電子群分得越開,這個值越低。
+  // 用來在多次隨機起點嘗試中挑出「收斂得最漂亮」的那一次——單次鬆弛偶爾會卡在扭曲的
+  // 局部極小值(尤其懸鏈接懸鏈、或兩個 sp2 中心相連時),結果會顯示成看起來像「錯的分子」。
+  // 回傳「最差那個中心」的電子群能量(不是全分子加總)——加總的話,某個中心角度歪掉
+  // 可能被其他中心排得特別開蓋過去(整體看起來平均值還不錯,但單一鍵角還是歪的,
+  // 例如 PEG 的醚氧鍵角有時飄到 130°+),只看最差的一個中心才能真正抓到這種局部缺陷。
+  function domainRepulsionEnergy(real, bonds, phantoms) {
+    const byId = new Map(real.map((a) => [a.id, a]));
+    const nbIds = new Map();
+    real.forEach((a) => nbIds.set(a.id, []));
+    bonds.forEach((b) => {
+      nbIds.get(b.a).push(b.b);
+      nbIds.get(b.b).push(b.a);
+    });
+    let maxE = 0;
+    real.forEach((c) => {
+      const nb = nbIds.get(c.id);
+      const lone = phantoms.get(c.id) || [];
+      const dirs = [];
+      nb.forEach((id) => {
+        const o = byId.get(id);
+        const dx = o.x - c.x, dy = o.y - c.y, dz = o.z - c.z;
+        const n = Math.hypot(dx, dy, dz) || 1;
+        dirs.push({ x: dx / n, y: dy / n, z: dz / n, lone: false });
+      });
+      lone.forEach((v) => dirs.push({ x: v.x, y: v.y, z: v.z, lone: true }));
+      let atomE = 0;
+      for (let i = 0; i < dirs.length; i++) {
+        for (let j = i + 1; j < dirs.length; j++) {
+          const w = (dirs[i].lone ? LONE_WEIGHT : 1) * (dirs[j].lone ? LONE_WEIGHT : 1);
+          const dx = dirs[i].x - dirs[j].x, dy = dirs[i].y - dirs[j].y, dz = dirs[i].z - dirs[j].z;
+          const d = Math.hypot(dx, dy, dz) || 1e-3;
+          atomE += w / (d * d * d);
+        }
+      }
+      if (atomE > maxE) maxE = atomE;
+    });
+    return maxE;
+  }
+
+  // 完整跑一次隨機起點的鬆弛(下面 build3DGeometry() 會跑好幾次挑最好的一次)
+  function build3DGeometryOnce() {
     const real = atoms.map((a) => ({
       id: a.id,
       el: a.el,
@@ -1497,6 +1538,25 @@
     });
 
     return { atoms: real, bonds: bonds.map((b) => ({ ...b })), phantoms, angleRefs };
+  }
+
+  // 隨機起點的鬆弛偶爾會卡在扭曲的局部極小值(尤其懸鏈接懸鏈、或兩個 sp2 中心相連時,
+  // 如 PVP/ABS 這類代表分子),使用者看到的結構會變形到像另一顆分子——多跑幾次、
+  // 用電子群互斥能量挑出排得最開(最像教科書 VSEPR 形狀)的一次,同一顆分子每次選單
+  // 點開結果才會穩定一致。
+  function build3DGeometry() {
+    const ATTEMPTS = 12;
+    let best = null;
+    let bestE = Infinity;
+    for (let i = 0; i < ATTEMPTS; i++) {
+      const cand = build3DGeometryOnce();
+      const e = domainRepulsionEnergy(cand.atoms, cand.bonds, cand.phantoms);
+      if (e < bestE) {
+        bestE = e;
+        best = cand;
+      }
+    }
+    return best;
   }
 
   // 以真實鍵長/力常數與 VSEPR 彎曲項組成的位能面(僅核座標),供數值 Hessian 使用
