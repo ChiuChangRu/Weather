@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>化學鍵結互動教學 — 共價鍵形成 與 LCAO 分子軌域理論</title>
-<link rel="stylesheet" href="style.css?v=28" />
+<title>化學鍵結互動教學</title>
+<link rel="stylesheet" href="style.css?v=30" />
 </head>
 <body>
 
@@ -14,264 +14,109 @@
       ⬇<span class="download-btn-label">下載網頁</span>
     </button>
     <figure class="pauling-fig">
-      <img src="pauling.png?v=28" alt="Linus Pauling" class="pauling-img"
-           onerror="if(!this.dataset.f){this.dataset.f=1;this.src='https://commons.wikimedia.org/wiki/Special:FilePath/Linus%20Pauling%201962.jpg?width=300';}else{this.onerror=null;this.src='pauling.svg';}" />
+      <img src="pauling.svg" alt="Linus Pauling" class="pauling-img" />
       <figcaption>Linus Pauling<br>《化學鍵的本質》</figcaption>
     </figure>
     <div>
       <h1>化學鍵結互動教學</h1>
-      <p class="subtitle">普通化學 · 共價鍵形成 &amp; LCAO 分子軌域理論</p>
+      <p class="subtitle">高中化學 · 路易斯結構:原子怎麼接、電子怎麼分配</p>
     </div>
   </div>
   <p id="download-status" class="tiny" style="text-align:center;min-height:1.2em"></p>
 </header>
 
 <nav class="tabs" role="tablist">
-  <button class="tab-btn active" data-tab="lewis" role="tab" aria-selected="true">① 拖拉共價鍵模擬</button>
-  <button class="tab-btn" data-tab="lcao" role="tab" aria-selected="false">② LCAO 分子軌域理論</button>
+  <button class="tab-btn active" data-tab="build" role="tab" aria-selected="true">① 拼拼看:原子怎麼接</button>
+  <button class="tab-btn" data-tab="quiz" role="tab" aria-selected="false">② 題目練習</button>
 </nav>
 
 <main>
-  <section id="tab-lewis" class="tab-panel active">
-    <div class="lewis-layout">
-      <aside class="palette">
-        <div class="palette-title">原子盒</div>
-        <div id="palette-buttons"></div>
-        <button id="lewis-clear" class="btn-secondary">清空畫布</button>
+  <section id="tab-build" class="tab-panel active">
+    <div class="build-layout">
+      <aside class="palette card">
+        <div class="card-title">週期表(點一下或拖進畫布)</div>
+        <div id="ptable" class="ptable"></div>
+        <p class="tiny">格子右下角數字 = 價電子數。紫色格的金屬碰到非金屬會「轉移」電子(離子鍵)。</p>
       </aside>
 
-      <div class="lewis-center">
-        <p id="energy-header" class="energy-header" style="display:none"></p>
-        <div class="mol-selects">
-          <select id="target-chips" class="mol-select"></select>
-          <select id="plastic-select" class="mol-select"></select>
-          <label id="plastic-n-wrap" class="plastic-n-wrap" style="display:none">
-            單體數 N
-            <select id="plastic-n-select" class="mol-select plastic-n-select">
-              <option value="1">1</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-              <option value="4" selected>4</option>
+      <div class="stage-col">
+        <div class="toolbar">
+          <select id="preset-select" class="sel"></select>
+          <select id="question-select" class="sel"></select>
+          <button id="btn-resonance" class="btn" style="display:none">↔ 下一個共振結構</button>
+          <button id="btn-clear" class="btn">清空畫布</button>
+          <button id="btn-view" class="btn">重設視角</button>
+        </div>
+        <div id="question-banner" class="banner" style="display:none">
+          <div id="question-text" class="q-text"></div>
+          <div class="banner-btns">
+            <button id="btn-check" class="btn primary">✔ 檢查</button>
+            <button id="btn-answer" class="btn">看答案</button>
+            <button id="btn-quit" class="btn">結束</button>
+          </div>
+          <div id="question-feedback" class="feedback"></div>
+        </div>
+        <p id="cat-tip" class="tip" style="display:none"></p>
+        <div class="stage-wrap">
+          <svg id="stage" viewBox="0 0 640 440" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+        <div class="toggles">
+          <label>共用電子顯示
+            <select id="bond-style" class="sel small">
+              <option value="dots">電子點(看得到誰出的)</option>
+              <option value="lines">短線(結構式)</option>
             </select>
           </label>
+          <label><input type="checkbox" id="tg-fc" checked /> 形式電荷</label>
+          <label><input type="checkbox" id="tg-marks" checked /> 用 × / • 區分電子是誰的</label>
+          <label><input type="checkbox" id="tg-partial" /> 電負度 δ+ / δ−</label>
         </div>
-        <div class="canvas-tools">
-          <button id="btn-cloud" class="tool-btn"
-            title="以半透明模糊雲顯示價電子密度:紅=δ−(電子密度高)、藍=δ+(電子密度低),並畫出淨偶極箭頭判斷極性分子">
-            ☁ 電子雲與極性
-          </button>
-        </div>
-        <div class="stage-and-modes">
-          <svg id="lewis-stage" viewBox="0 0 760 520" preserveAspectRatio="xMidYMid meet"></svg>
-          <div class="vib-side">
-            <h4 id="vib-side-title">🎵 振動模式</h4>
-            <p id="vib-side-desc" class="tiny">點一下,直接在左邊分子上播放</p>
-            <div class="orbital-buttons" id="vib-mode-list"></div>
-          </div>
-        </div>
-        <div class="info-card vib-inline">
-          <h4 id="ir-title">🌍 這顆分子的 IR 光譜 與 溫室效應判斷</h4>
-          <div id="vib-axis-wrap" style="display:none;margin-top:6px">
-            <svg id="svg-lewis-ir" viewBox="0 0 720 230" style="width:100%;height:auto"></svg>
-            <p id="ghg-verdict" class="status-line"></p>
-            <p id="ir-desc" class="tiny">
-              黑線＝這顆分子的 IR 吸收光譜(強度來自模式改變偶極矩的程度);橙色/黃色區塊＝地球熱輻射與太陽輻射,疊在一起才看得出哪個振動模式真正擋得住地球散熱。
-              只列出有代表性的模式,簡併(對稱重複)已合併,雜訊般的低頻模式已省略。點選左邊的振動模式,對應的吸收峰會在圖上明顯標示出來。
-            </p>
-          </div>
-        </div>
-
-        <p id="lewis-status" class="status-line">先從左側把原子拖進畫布吧！</p>
-        <div id="component-readout" class="readout"></div>
+        <p id="status" class="status-line">先從左邊週期表把原子拉進畫布吧!</p>
       </div>
 
-      <aside class="info-panel">
-        <div class="info-card" id="selected-panel"></div>
-        <div class="info-card" id="geom-panel"></div>
-        <div class="info-card">
-          <h4>價電子・可成鍵數・電負度</h4>
-          <table class="ref">
-            <thead><tr><th>原子</th><th>價電子</th><th>可成鍵</th><th>孤對</th><th>電負度</th></tr></thead>
-            <tbody>
-              <tr><td>H</td><td>1</td><td>1</td><td>0</td><td>2.20</td></tr>
-              <tr><td>C</td><td>4</td><td>4</td><td>0</td><td>2.55</td></tr>
-              <tr><td>N</td><td>5</td><td>3</td><td>1</td><td>3.04</td></tr>
-              <tr><td>O</td><td>6</td><td>2</td><td>2</td><td>3.44</td></tr>
-            </tbody>
-          </table>
-          <p class="tiny">
-            可成鍵數＝未配對電子數＝8−價電子數（H 為 2−1＝1）——這就是化合價。
-            <b>電負度</b>大的原子會把共用電子「拉」過去（δ−），小的被「推」走（δ+）；
-            電負度差越大鍵越極性，但整個分子是否極性還要看<b>形狀</b>會不會讓鍵偶極抵銷——用「☁ 電子雲與極性」按鈕檢驗。
-          </p>
-        </div>
-        <div class="info-card">
-          <h4>形式電荷</h4>
-          <p class="tiny">
-            FC ＝ V − N − B（V 價電子、N 非鍵結電子、B 鍵結數）。
-            中性分子裡通常為 0。試試：選取 O 按「−1 e⁻」再接三個 H 做出 H₃O⁺。
-          </p>
-        </div>
-        <details class="info-card">
+      <aside class="info-col">
+        <div class="card" id="atom-card"></div>
+        <div class="card" id="mol-card"></div>
+        <details class="card" open>
+          <summary>🔍 圖例</summary>
+          <div class="legend-list tiny">
+            <div><span class="lg-dot"></span> 單獨一個點 = 未配對電子(還可以成鍵)</div>
+            <div><span class="lg-dot"></span><span class="lg-dot"></span> 兩個點 = 孤對電子</div>
+            <div><span class="lg-pair"><span class="lg-dot"></span><span class="lg-x">×</span></span> 黃底 = 共用電子對(共價鍵);點的顏色、× 或 • 表示這個電子原本是哪個原子的</div>
+            <div><span class="lg-ring" style="border-color:#2f9e44"></span> 綠框:八隅體(H 為二隅體)完成</div>
+            <div><span class="lg-ring" style="border-color:#7048e8"></span> 紫框:合理的例外(不足/擴張/奇數電子)</div>
+            <div><span class="lg-ring" style="border-color:#f08c00"></span> 橘框:還有未配對電子,還沒接完</div>
+            <div><span class="lg-ring" style="border-color:#e03131"></span> 紅框:不合理(超過八隅體、金屬共用電子…)</div>
+            <div><span class="lg-fc">+1</span> 形式電荷 = 價電子 − 非鍵電子 − 鍵數</div>
+          </div>
+        </details>
+        <details class="card">
           <summary>📖 操作說明</summary>
           <p class="tiny">
-            把原子從原子盒<b>拖進畫布</b>（點一下也會自動放入）。拖兩個原子靠近，未配對電子會配成<b>共用電子對</b>形成共價鍵；
-            點鍵可升級雙鍵／三鍵；拖遠斷鍵；拖到右下角垃圾桶刪除。放開滑鼠就會自動最佳化鍵長與立體結構，不用另外按按鈕。
-            點選原子看形式電荷並可增減電子做離子。能量條顯示結構穩定度——只有能量低的穩定結構才會存在。
-          </p>
-        </details>
-        <details class="info-card">
-          <summary>🔍 圖例</summary>
-          <p class="tiny">
-            單獨黑點＝未配對電子（可成鍵）／黑點成對＝孤對電子／黃底電子對＝共用電子對（共價鍵）。
-            綠框＝八隅體完成（穩定）；橘框＝還有未配對電子（不穩定）；紅＋／藍−徽章＝形式電荷。
-            電子雲模式：紅雲＝δ−、藍雲＝δ+；橙色大箭頭＝整個分子的淨偶極（由 δ+ 指向 δ−）。
-            灰色數字＝鍵長（相對單位）與鍵角。
+            把原子拖進畫布(點一下也會放進去)。拖兩個原子靠近 → 各出一個未配對電子形成共用電子對;
+            若一方沒有未配對電子,但有孤對電子、另一方有空軌域,會形成<b>配位共價鍵</b>(兩個電子都由同一個原子提供)。
+            點一下鍵:單鍵 → 雙鍵 → 三鍵 → 單鍵。把原子拖遠就斷鍵,拖到右下角垃圾桶刪除。
+            拖曳空白處可以旋轉看立體形狀。點選原子後可以加減電子做成離子,或換成同族/相鄰元素。
           </p>
         </details>
       </aside>
     </div>
   </section>
 
-  <section id="tab-lcao" class="tab-panel">
-    <details class="side-note">
-      <summary>ℹ️ LCAO 原理說明</summary>
-      原子軌域波函數依相位相加（同相 → 建設性干涉 → 鍵結軌域）或相減
-      （異相 → 破壞性干涉 → 反鍵結軌域，中間出現節面）線性組合成分子軌域（LCAO-MO）。
-      調整軌域類型、原子核間距與電子數，觀察鍵級與穩定性的變化。
-    </details>
-
-    <div class="lcao-controls">
-      <div class="control-group">
-        <label>軌域組合類型</label>
-        <div class="orbital-buttons" id="orbital-buttons"></div>
-      </div>
-      <div class="control-group">
-        <label for="distance-slider">原子核間距 R</label>
-        <input type="range" id="distance-slider" min="60" max="220" value="120" step="1" />
-      </div>
-      <div class="control-group">
-        <label for="electron-select">填入電子數（此組軌域）</label>
-        <select id="electron-select">
-          <option value="0">0</option>
-          <option value="1">1</option>
-          <option value="2" selected>2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-        </select>
-      </div>
-    </div>
-
-    <p class="legend">橙色 = 正相位（+）　藍色 = 負相位（−）　虛線 = 節面（電子機率為零之處）</p>
-
-    <div class="orbital-panels">
-      <div class="panel-box">
-        <h3>鍵結分子軌域（同相疊加，建設性干涉）</h3>
-        <svg id="svg-bonding" viewBox="0 0 440 240"></svg>
-      </div>
-      <div class="panel-box">
-        <h3>反鍵結分子軌域（異相疊加，破壞性干涉，出現節面）</h3>
-        <svg id="svg-antibonding" viewBox="0 0 440 240"></svg>
-      </div>
-    </div>
-
-    <div class="panel-box full-width">
-      <h3>分子軌域能階圖與電子填入</h3>
-      <svg id="svg-energy" viewBox="0 0 900 260"></svg>
-      <p id="bond-order-text" class="status-line"></p>
-    </div>
-
-    <div class="panel-box full-width">
-      <h3>位能 vs. 原子核間距（示意圖）</h3>
-      <svg id="svg-curve" viewBox="0 0 900 180"></svg>
-      <p id="curve-text" class="status-line"></p>
-    </div>
-
-    <div class="panel-box full-width">
-      <h3>真實量子計算：H₂ 的 Hartree–Fock 能量曲線（STO-3G 基底）</h3>
-      <details class="side-note">
-        <summary>ℹ️ 這是真的計算,不是示意圖</summary>
-        程式即時計算高斯基底函數的重疊、動能、核吸引與電子互斥積分，組出 Hartree–Fock 能量，
-        掃描不同核間距 R 找出能量最低的平衡鍵長（ab initio 從頭計算）。
-      </details>
-      <div class="canvas-tools" style="justify-content:center">
-        <button id="btn-hf" class="tool-btn">▶ 執行 H₂ Hartree–Fock 計算</button>
-      </div>
-      <svg id="svg-hf" viewBox="0 0 900 240"></svg>
-      <p id="hf-text" class="status-line">按下按鈕開始掃描。</p>
-    </div>
-
-    <div class="panel-box full-width">
-      <h3>分子振動模式 與 IR 紅外光譜</h3>
-      <details class="side-note">
-        <summary>ℹ️ 振動與 IR 吸收的條件</summary>
-        分子會像彈簧一樣振動。振動若會<b>改變偶極矩</b>就能吸收紅外光（IR 活躍），在光譜上出現吸收峰。
-        H₂ 的振動頻率不是查表 —— 是把上面 Hartree–Fock 能量曲線在谷底做二階微分（諧振子近似）即時算出來的。
-      </details>
-      <div class="canvas-tools" style="justify-content:center">
-        <div class="orbital-buttons" id="vib-mol-buttons"></div>
-      </div>
-      <div class="canvas-tools" style="justify-content:center">
-        <div class="orbital-buttons" id="vib-mode-buttons"></div>
-      </div>
-      <svg id="svg-vib" viewBox="0 0 440 190" style="max-width:460px;margin:0 auto;display:block"></svg>
-      <p id="vib-text" class="status-line"></p>
-      <h3 style="margin-top:10px">IR 光譜 疊上 地球熱輻射 與 太陽輻射（穿透率 %T,x 軸依慣例由高波數往低）</h3>
-      <svg id="svg-ir" viewBox="0 0 900 220"></svg>
-      <p class="tiny" style="text-align:center">
-        想一想：哪些氣體的吸收峰正好落在<span style="color:#e8940a;font-weight:700">地球熱輻射（橙色）</span>的範圍內？
-        那些氣體會攔下地球往外散的熱，會發生什麼事？用下面的氣體清單自己判斷。
-      </p>
-    </div>
-
-    <div class="ref-cards">
-      <div class="info-card">
-        <h4>常見小分子氣體 — 哪些會吸收地球的紅外輻射？</h4>
-        <p class="tiny">
-          N₂、O₂、Ar、H₂、CO₂、CH₄、H₂O（水蒸氣）、N₂O、O₃、CO、NH₃、SO₂、NO、NO₂、Cl₂、HCl<br><br>
-          <b>判斷步驟</b>：①這個分子有沒有「會改變偶極矩」的振動？（單原子的 Ar 連振動都沒有；同核雙原子呢？）
-          ②它的吸收峰落在地球熱輻射的範圍嗎？——用上面「🌍 IR 光譜與溫室效應判斷」自己接一顆分子出來檢驗，不要用背的！
-        </p>
-      </div>
-      <div class="info-card">
-        <h4>常見的有害氣體</h4>
-        <p class="tiny">
-          <b>CO</b>（一氧化碳）：與血紅素結合,造成缺氧中毒<br>
-          <b>Cl₂</b>（氯氣）：刺激、腐蝕呼吸道<br>
-          <b>H₂S</b>（硫化氫）：劇毒,低濃度有臭雞蛋味,高濃度反而聞不到<br>
-          <b>HCN</b>（氰化氫）：劇毒,阻斷細胞呼吸作用<br>
-          <b>NO₂</b>（二氧化氮）：刺激性,光化學煙霧的成因之一<br>
-          <b>SO₂</b>（二氧化硫）：刺激性,溶於水形成酸雨<br>
-          <b>O₃</b>（臭氧）：近地面對呼吸道有害,但平流層的臭氧層能擋紫外線<br><br>
-          有害不等於溫室氣體,兩者是不同的判斷——上面的 SO₂、NO₂ 也同時是溫室氣體,可以自己接接看驗證。
-        </p>
-      </div>
-      <div class="info-card">
-        <h4>常見的酸</h4>
-        <p class="tiny">
-          <b>強酸</b>：HCl、HBr、HI、H₂SO₄、HNO₃、HClO₄<br>
-          <b>弱酸</b>：CH₃COOH（醋酸）、H₂CO₃（碳酸）、HF、H₃PO₄、H₂S<br><br>
-          注意：HF 的 H–F 鍵極性超大（EN 差 1.78），卻是弱酸——酸強度看的是解離平衡，不只是鍵極性。
-        </p>
-      </div>
-      <div class="info-card">
-        <h4>常見的鹼</h4>
-        <p class="tiny">
-          <b>強鹼</b>：NaOH、KOH、Ca(OH)₂、Ba(OH)₂<br>
-          <b>弱鹼</b>：NH₃（氨水）、CH₃NH₂（甲胺）、C₅H₅N（吡啶）<br><br>
-          NH₃ 在第一分頁就做得出來——它的孤對電子正是它當鹼（接受 H⁺ 變 NH₄⁺）的原因。
-        </p>
-      </div>
-    </div>
+  <section id="tab-quiz" class="tab-panel">
+    <div class="quiz-modes" id="quiz-modes"></div>
+    <div id="quiz-body" class="card quiz-body"></div>
   </section>
 </main>
 
 <footer class="app-footer">
-  <p>多數圖示為教學用簡化示意；「H₂ Hartree–Fock」面板為真實的從頭計算（RHF／STO-3G）。</p>
+  <p>分子形狀由電子域(鍵結電子對、孤對電子)互相排斥自動排列而成;拖曳畫布空白處可旋轉。</p>
 </footer>
 
-<script src="main.js?v=28"></script>
-<script src="lewis.js?v=28"></script>
-<script src="lcao.js?v=28"></script>
+<script src="main.js?v=30"></script>
+<script src="chem.js?v=30"></script>
+<script src="presets.js?v=30"></script>
+<script src="app.js?v=30"></script>
+<script src="quiz.js?v=30"></script>
 </body>
 </html>
