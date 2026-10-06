@@ -122,11 +122,37 @@
 
   // 每次結構改變後:把用不到的擴張軌域收回(回到最少軌域的狀態)
   function normalize(mol) {
-    mol.atoms.forEach((a) => {
+    const fixExtra = () => mol.atoms.forEach((a) => {
       const i = atomInfo(mol, a);
       const needed = i.bondSum + Math.ceil(Math.max(i.nb, 0) / 2);
       a.extra = Math.max(0, needed - baseOrb(a.el));
     });
+    fixExtra();
+    if (placeOddElectron(mol)) fixExtra();
+  }
+
+  // 奇數電子分子(NO、NO₂、ClO₂):總價電子是奇數,一定剩 1 個落單電子。
+  // 課本把它畫在 N(或 Cl)上:如果落單電子停在別的原子(例如 NO₂ 的 O),
+  // 就讓 N 把 1 個孤對電子中的 1 個交給那個原子 → O=N⁺(•)–O⁻,其餘原子都是八隅體
+  function placeOddElectron(mol) {
+    let moved = false;
+    fragments(mol).forEach((ids) => {
+      if (ids.length < 2) return;
+      const atoms = ids.map((id) => atomById(mol, id));
+      if (atoms.some((a) => ELEMENTS[a.el].metal)) return;
+      const total = atoms.reduce((s, a) => s + a.own, 0);
+      if (total % 2 === 0) return;
+      const withUnpaired = atoms.filter((a) => atomInfo(mol, a).unpaired > 0);
+      if (withUnpaired.length !== 1 || atomInfo(mol, withUnpaired[0]).unpaired !== 1) return;
+      const U = withUnpaired[0];
+      if (ODD_OK.has(U.el) || U.el === 'H') return;
+      const host = atoms.find((a) => ODD_OK.has(a.el) && atomInfo(mol, a).degree > 0 && atomInfo(mol, a).pairs > 0);
+      if (!host) return;
+      host.own -= 1;
+      U.own += 1;
+      moved = true;
+    });
+    return moved;
   }
 
   function fragments(mol) {

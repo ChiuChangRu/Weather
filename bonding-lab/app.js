@@ -545,7 +545,9 @@
         const gain = a.own - V;
         sumV += V; sumNb += Math.max(i.nb, 0); sumOwn += a.own; sumFC += i.fc;
         const target = C.octetTarget(a.el);
-        const shellOk = i.shell === target ? ' ✔' : (i.status === 'warn' || i.status === 'error') ? ` <span class="bad">✘ 不足 ${target}</span>` : '';
+        const shellOk = i.shell === target ? ' ✔'
+          : (i.status === 'warn' || i.status === 'error') ? ` <span class="bad">✘ 不足 ${target}</span>`
+          : i.status === 'exc' ? ` <span class="exc">例外</span>` : '';
         return `<tr data-id="${id}" class="${S.selectedId === id ? 'sel' : ''}">
           <td><b>${labels.get(id).text}</b></td>
           <td>${V}</td>
