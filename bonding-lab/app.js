@@ -57,45 +57,83 @@
     svg.appendChild(g);
   }
 
-  // 結構改變後,動畫式地鬆弛到正確形狀,再平滑地轉到看得清楚的方向
-  function settle(orientAfter = true, force = false) {
+  // 結構改變後的位置調整:只動受影響的分子(active),
+  // 每一步都把 ref 記下的原子「對齊回原位」——原本的分子不會漂走、轉掉或被擠開,
+  // 只有新接上的原子移到正確位置,電子排列跟著更新
+  function fragOf(id) { return C.fragments(S.mol).find((f) => f.includes(id)) || []; }
+  function snapshot(ids) {
+    const m = new Map();
+    ids.forEach((id) => { const a = C.atomById(S.mol, id); if (a) m.set(id, [a.x, a.y, a.z]); });
+    return m;
+  }
+  function settle(ref, activeIds) {
     cancelAnimationFrame(S.anim);
+    const active = new Set(activeIds.filter((id) => C.atomById(S.mol, id)));
+    if (!active.size) { draw(); return; }
     let frames = 0;
     let improved = false;
     const step = () => {
-      const m = C.relax(S.mol, 14, S.drag && S.drag.type === 'atom' ? S.drag.id : null);
+      const m = C.relax(S.mol, 14, null, active);
+      C.alignToRef(S.mol, ref);
       frames++;
       if ((m < 0.04 || frames > 80) && !improved) {
         // 連續鬆弛可能卡在局部最小值(5、6 個電子域),試一次孤對/鍵對調
         improved = true;
-        if (C.improveDomains(S.mol)) { frames = 40; S.anim = requestAnimationFrame(step); return; }
-      }
-      if (m < 0.04 || frames > 80) {
-        draw();
-        if (orientAfter) animateOrient(force);
-        return;
+        if (C.improveDomains(S.mol)) { C.alignToRef(S.mol, ref); frames = 40; draw(); S.anim = requestAnimationFrame(step); return; }
       }
       draw();
+      if (m < 0.04 || frames > 80) { unhideOverlap([...active]); return; }
       S.anim = requestAnimationFrame(step);
     };
     S.anim = requestAnimationFrame(step);
   }
-  function animateOrient(force) {
-    const plans = C.orientPlan(S.mol, S.view, force).map((pl) => ({ ...pl, aa: C.toAxisAngle(pl.M) }));
-    if (!plans.length) { keepInView(); draw(); return; }
-    const N = 14;
-    let k = 0;
-    const step = () => {
-      k++;
-      plans.forEach((pl) => {
-        if (!pl.aa) { if (k === N) C.rotateFragment(S.mol, pl.ids, pl.cen, pl.M); return; }
-        C.rotateFragment(S.mol, pl.ids, pl.cen, C.axisAngle(pl.aa.axis, pl.aa.ang / N));
-      });
-      if (k >= N) { keepInView(); draw(); return; }
-      draw();
-      S.anim = requestAnimationFrame(step);
-    };
-    S.anim = requestAnimationFrame(step);
+  // 立體形狀決定的位置剛好擋在別的原子正前方時(例如 CH₄ 第 4 個 H),
+  // 以中心原子為軸稍微轉一點點(中心原子不動),讓每個原子都看得到
+  function unhideOverlap(ids) {
+    C.fragments(S.mol).filter((f) => f.length >= 3 && f.some((id) => ids.includes(id))).forEach((f) => {
+      const atoms = f.map((id) => C.atomById(S.mol, id));
+      const center = atoms.reduce((b, a) => (C.atomInfo(S.mol, a).degree > C.atomInfo(S.mol, b).degree ? a : b), atoms[0]);
+      const cen = [center.x, center.y, center.z];
+      const sep = (M) => {
+        const pts = atoms.map((a) => {
+          const d = M ? C.mvec(M, [a.x - cen[0], a.y - cen[1], a.z - cen[2]]) : [a.x - cen[0], a.y - cen[1], a.z - cen[2]];
+          return { p: C.project(S.view, [cen[0] + d[0], cen[1] + d[1], cen[2] + d[2]]), r: C.drawR(a.el) };
+        });
+        let worst = Infinity;
+        for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+          worst = Math.min(worst, Math.hypot(pts[i].p.x - pts[j].p.x, pts[i].p.y - pts[j].p.y) - (pts[i].r + pts[j].r) * pts[i].p.s - 14);
+        }
+        return worst;
+      };
+      if (sep(null) >= 0) return;
+      const Rt = [[S.view.R[0][0], S.view.R[1][0], S.view.R[2][0]], [S.view.R[0][1], S.view.R[1][1], S.view.R[2][1]], [S.view.R[0][2], S.view.R[1][2], S.view.R[2][2]]];
+      // 找「轉最少」就能分開的角度;都分不開就取分得最開的那個
+      let best = null, fallback = { sc: sep(null) };
+      for (let deg = 8; deg <= 70 && !best; deg += 4) {
+        for (let t = 0; t < 360; t += 15) {
+          const ax = C.mvec(Rt, [Math.cos((t * Math.PI) / 180), Math.sin((t * Math.PI) / 180), 0]);
+          const sc = sep(C.axisAngle(ax, (deg * Math.PI) / 180));
+          if (sc >= 0 && (!best || sc > best.sc)) best = { ax, deg, sc };
+          if (sc > fallback.sc) fallback = { ax, deg, sc };
+        }
+      }
+      best = best || (fallback.ax ? fallback : null);
+      if (!best) return;
+      const N = 10;
+      let k = 0;
+      const stepRot = () => {
+        k++;
+        C.rotateFragment(S.mol, f, cen, C.axisAngle(best.ax, (best.deg * Math.PI) / 180 / N));
+        draw();
+        if (k < N) S.anim = requestAnimationFrame(stepRot);
+      };
+      S.anim = requestAnimationFrame(stepRot);
+    });
+  }
+  // 重新調整整塊分子(鍵級改變、加減電子、換元素):形狀可以變,但整體位置與方向保持
+  function settleFrag(id) {
+    const ids = fragOf(id);
+    settle(snapshot(ids), ids);
   }
   // 原子跑出畫面就整體拉回來
   function keepInView() {
@@ -237,7 +275,6 @@
       if (score < bestD) { best = o; bestD = score; }
     });
     S.candidateId = best ? best.id : null;
-    C.relax(S.mol, 3, a.id);
     draw();
   }
 
@@ -246,13 +283,16 @@
     const a = C.atomById(S.mol, d.id);
     S.drag = null;
     if (!a) { draw(); return; }
+    // 拖曳開始時跟它相連的原子(可能在拖曳中斷鍵了),那些分子也要重新整理電子
+    const touched = new Set(d.startNeighbors || []);
     if (d.overTrash) {
       C.deleteAtom(S.mol, a.id);
       S.selectedId = null;
       S.candidateId = null;
       setStatus(`刪除了 ${a.el}。`);
       leavePreset();
-      settle(false);
+      const ids = [...touched].flatMap((id) => fragOf(id));
+      settle(snapshot(ids), ids);
       return;
     }
     if (!d.moved) {
@@ -263,13 +303,38 @@
     if (S.candidateId) {
       const o = C.atomById(S.mol, S.candidateId);
       S.candidateId = null;
+      const fixedIds = fragOf(o.id);
+      const movingIds = fragOf(a.id);
+      const ref = snapshot([...fixedIds, ...[...touched].flatMap((id) => fragOf(id)).filter((id) => !movingIds.includes(id))]);
       const r = C.connect(S.mol, a, o);
       setStatus(r.msg + (r.ok && r.kind !== 'ionic' ? '。點一下鍵可以改成雙鍵/三鍵。' : ''), r.ok ? 'success' : 'warn');
-      if (r.ok) leavePreset();
-      settle(true);
+      if (r.ok) {
+        leavePreset();
+        // 原本的分子固定不動;拖進來的原子(或它那一塊)直接放到鍵長的位置,方向照使用者放的方向
+        let dir = [a.x - o.x, a.y - o.y, a.z - o.z];
+        const R = S.view.R;
+        const vz = [R[2][0], R[2][1], R[2][2]];
+        const dz = dir[0] * vz[0] + dir[1] * vz[1] + dir[2] * vz[2];
+        dir = [dir[0] - vz[0] * dz, dir[1] - vz[1] * dz, dir[2] - vz[2] * dz];
+        let len = Math.hypot(...dir);
+        if (len < 1e-3) { dir = [R[0][0], R[0][1], R[0][2]]; len = 1; }
+        const b = C.bondBetween(S.mol, a.id, o.id);
+        const L = r.kind === 'ionic' ? C.drawR(a.el) + C.drawR(o.el) + 110 : C.bondLen(a.el, o.el, b ? b.pairs.length : 1);
+        const shift = [o.x + dir[0] / len * L - a.x, o.y + dir[1] / len * L - a.y, o.z + dir[2] / len * L - a.z];
+        movingIds.forEach((id) => {
+          const x = C.atomById(S.mol, id);
+          x.x += shift[0]; x.y += shift[1]; x.z += shift[2];
+        });
+        settle(ref, [...fixedIds, ...movingIds, ...ref.keys()]);
+      } else {
+        draw();
+      }
       return;
     }
-    settle(true);
+    // 沒接到任何原子:它原本所在的分子(以及剛斷開的分子)重新整理,其餘不動
+    const ids = [...new Set([...fragOf(a.id), ...[...touched].flatMap((id) => fragOf(id))])];
+    if (ids.length > 1) settle(snapshot(ids.filter((id) => id !== a.id)), ids);
+    else draw();
   }
 
   svg.addEventListener('pointerdown', (e) => {
@@ -277,7 +342,9 @@
     const bondEl = e.target.closest('[data-bond]');
     if (atomEl) {
       const id = Number(atomEl.getAttribute('data-atom'));
-      S.drag = { type: 'atom', id, x: e.clientX, y: e.clientY, moved: false };
+      const startNeighbors = S.mol.bonds.filter((b) => b.a === id || b.b === id).map((b) => C.otherOf(b, id))
+        .concat(S.mol.links.filter((l) => l.a === id || l.b === id).map((l) => C.otherOf(l, id)));
+      S.drag = { type: 'atom', id, x: e.clientX, y: e.clientY, moved: false, startNeighbors };
     } else if (bondEl) {
       S.drag = { type: 'bond', idx: Number(bondEl.getAttribute('data-bond')), x: e.clientX, y: e.clientY, moved: false };
     } else {
@@ -331,7 +398,7 @@
         const r = C.cycleBond(S.mol, b);
         setStatus(r.msg, r.ok ? 'success' : 'warn');
         if (r.ok) leavePreset();
-        settle(true);
+        settleFrag(b.a);
       }
       return;
     }
@@ -342,10 +409,11 @@
   });
   window.addEventListener('keydown', (e) => {
     if ((e.key === 'Delete' || e.key === 'Backspace') && S.selectedId && document.activeElement === document.body) {
+      const ids = fragOf(S.selectedId).filter((id) => id !== S.selectedId);
       C.deleteAtom(S.mol, S.selectedId);
       S.selectedId = null;
       leavePreset();
-      settle(false);
+      settle(snapshot(ids), ids);
     }
   });
 
@@ -402,15 +470,16 @@
     else if (act === 'up' || act === 'down') r = C.swapElement(S.mol, a, nb[act], true);
     else if (act === 'left' || act === 'right') r = C.swapElement(S.mol, a, nb[act], false);
     else if (act === 'del') {
+      const ids = fragOf(a.id).filter((id) => id !== a.id);
       C.deleteAtom(S.mol, a.id);
       S.selectedId = null;
       setStatus('刪除了一個原子。');
       leavePreset();
-      settle(false);
+      settle(snapshot(ids), ids);
       return;
     }
     setStatus(r.msg, r.ok ? 'success' : 'warn');
-    if (r.ok) { leavePreset(); settle(true); } else draw();
+    if (r.ok) { leavePreset(); settleFrag(a.id); } else draw();
   }
 
   // 右側:整個分子的電子總帳
@@ -537,7 +606,7 @@
     C.applyForm(S.mol, S.presetIds, spec.forms[S.formIdx]);
     updateResonanceBtn();
     describePreset();
-    settle(true);
+    settleFrag(S.presetIds[0]);
   });
   document.getElementById('btn-clear').addEventListener('click', () => {
     cancelAnimationFrame(S.anim);

@@ -552,7 +552,8 @@
     if (improveDomains(mol)) relax(mol, iters);
   }
 
-  function relax(mol, iters = 200, pinnedId = null) {
+  // active:只讓這些原子移動(其他分子、或不相干的原子完全不動)
+  function relax(mol, iters = 200, pinnedId = null, active = null) {
     const atoms = mol.atoms;
     const n = atoms.length;
     if (!n) return 0;
@@ -623,7 +624,7 @@
           if (dm.j != null) {
             F[dm.j] = v3.add(F[dm.j], v3.mul(t, KA));
             F[c] = v3.sub(F[c], v3.mul(t, KA));
-          } else {
+          } else if (!active || active.has(a.id)) {
             a.lp[dm.k] = v3.norm(v3.add(dm.v, v3.mul(t, KL)));
           }
         });
@@ -655,7 +656,7 @@
           const same = fragOf[i] === fragOf[j];
           const linked = !same && mol.links.some((l) => (idx.get(l.a) === i && idx.get(l.b) === j) || (idx.get(l.a) === j && idx.get(l.b) === i));
           if (linked) continue;
-          const minD = R[i] + R[j] + (same ? 30 : 64);
+          const minD = R[i] + R[j] + (same ? 30 : 6); // 不同分子只防止重疊,不互相推開
           const d = v3.sub(P(atoms[j]), P(atoms[i]));
           const L = v3.len(d);
           if (L >= minD) continue;
@@ -668,16 +669,16 @@
       // 前進一步
       let maxStep = 0;
       for (let i = 0; i < n; i++) {
-        if (i === pinned) continue;
+        if (i === pinned || (active && !active.has(atoms[i].id))) continue;
         let s = F[i];
         const l = v3.len(s);
         if (l > 8) s = v3.mul(s, 8 / l);
         maxStep = Math.max(maxStep, l);
         atoms[i].x += s[0]; atoms[i].y += s[1]; atoms[i].z += s[2];
       }
-      // 各片段的重心固定(使用者放在哪就留在哪)
+      // 各片段的重心固定(使用者放在哪就留在哪);有指定 active 時改由呼叫端對齊
       fragList.forEach((f, k) => {
-        if (f.includes(pinned)) return;
+        if (active || f.includes(pinned)) return;
         const after = f.reduce((s, i) => v3.add(s, P(atoms[i])), [0, 0, 0]);
         const shift = v3.mul(v3.sub(after, before[k]), 1 / f.length);
         f.forEach((i) => { atoms[i].x -= shift[0]; atoms[i].y -= shift[1]; atoms[i].z -= shift[2]; });
@@ -739,6 +740,78 @@
     const vals = [A[0][0], A[1][1], A[2][2]];
     const vecs = [0, 1, 2].map((i) => [V[0][i], V[1][i], V[2][i]]);
     return { vals, vecs };
+  }
+
+  // 對稱矩陣特徵值(Jacobi 法,任意大小)
+  function jacobiN(M) {
+    const n = M.length;
+    const A = M.map((r) => r.slice());
+    const V = A.map((_, i) => A.map((__, j) => (i === j ? 1 : 0)));
+    for (let sweep = 0; sweep < 50; sweep++) {
+      let off = 0;
+      for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) off += A[p][q] * A[p][q];
+      if (off < 1e-14) break;
+      for (let p = 0; p < n; p++) {
+        for (let q = p + 1; q < n; q++) {
+          if (Math.abs(A[p][q]) < 1e-14) continue;
+          const th = 0.5 * Math.atan2(2 * A[p][q], A[q][q] - A[p][p]);
+          const c = Math.cos(th), s = Math.sin(th);
+          for (let k = 0; k < n; k++) {
+            const akp = A[k][p], akq = A[k][q];
+            A[k][p] = c * akp - s * akq; A[k][q] = s * akp + c * akq;
+          }
+          for (let k = 0; k < n; k++) {
+            const apk = A[p][k], aqk = A[q][k];
+            A[p][k] = c * apk - s * aqk; A[q][k] = s * apk + c * aqk;
+          }
+          for (let k = 0; k < n; k++) {
+            const vkp = V[k][p], vkq = V[k][q];
+            V[k][p] = c * vkp - s * vkq; V[k][q] = s * vkp + c * vkq;
+          }
+        }
+      }
+    }
+    return { vals: A.map((r, i) => r[i]), vecs: A.map((_, i) => V.map((r) => r[i])) };
+  }
+  // 把每個分子整體「平移+旋轉」回去,讓 ref 裡記錄的原子盡量留在原位(Horn 四元數法):
+  // 形狀照樣由鬆弛決定,只是原本的分子不會漂走或轉掉
+  function alignToRef(mol, ref) {
+    fragments(mol).forEach((ids) => {
+      const pts = ids.filter((id) => ref.has(id));
+      if (!pts.length) return;
+      const cur = pts.map((id) => P(atomById(mol, id)));
+      const tgt = pts.map((id) => ref.get(id));
+      const pc = v3.mul(cur.reduce((s, p) => v3.add(s, p), [0, 0, 0]), 1 / pts.length);
+      const qc = v3.mul(tgt.reduce((s, p) => v3.add(s, p), [0, 0, 0]), 1 / pts.length);
+      let M = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+      if (pts.length >= 2) {
+        const S = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+        cur.forEach((p, k) => {
+          const a = v3.sub(p, pc), b = v3.sub(tgt[k], qc);
+          for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) S[i][j] += a[i] * b[j];
+        });
+        const [[xx, xy, xz], [yx, yy, yz], [zx, zy, zz]] = S;
+        const N = [
+          [xx + yy + zz, yz - zy, zx - xz, xy - yx],
+          [yz - zy, xx - yy - zz, xy + yx, zx + xz],
+          [zx - xz, xy + yx, -xx + yy - zz, yz + zy],
+          [xy - yx, zx + xz, yz + zy, -xx - yy + zz],
+        ];
+        const { vals, vecs } = jacobiN(N);
+        const [w, x, y, z] = vecs[vals.indexOf(Math.max(...vals))];
+        M = [
+          [w * w + x * x - y * y - z * z, 2 * (x * y - w * z), 2 * (x * z + w * y)],
+          [2 * (x * y + w * z), w * w - x * x + y * y - z * z, 2 * (y * z - w * x)],
+          [2 * (x * z - w * y), 2 * (y * z + w * x), w * w - x * x - y * y + z * z],
+        ];
+      }
+      ids.forEach((id) => {
+        const a = atomById(mol, id);
+        const d = v3.add(mv(M, v3.sub(P(a), pc)), qc);
+        a.x = d[0]; a.y = d[1]; a.z = d[2];
+        a.lp = a.lp.map((l) => mv(M, l));
+      });
+    });
   }
 
   // 把分子轉到「看得清楚」的方向:在許多候選方向中,挑原子與孤對電子投影到螢幕上
@@ -1169,7 +1242,7 @@
     ELEMENTS, TABLE, NOBLE_INERT, EXPANDABLE, ELECTRON_DEFICIENT, STATUS_COLOR,
     newMol, addAtom, atomById, bondBetween, linkBetween, otherOf, contribOf, atomInfo, normalize,
     fragments, analyze, connect, canConnect, cycleBond, breakBond, breakLink, changeElectron, swapElement, deleteAtom,
-    neighborEl, relax, relaxFull, improveDomains, orient, orientPlan, rotateFragment, toAxisAngle, axisAngle, project, unprojectDelta, screenToWorld, newView, rotX, rotY, mm,
+    neighborEl, relax, relaxFull, alignToRef, bondLen, mvec: mv, improveDomains, orient, orientPlan, rotateFragment, toAxisAngle, axisAngle, project, unprojectDelta, screenToWorld, newView, rotX, rotY, mm,
     applyForm, buildSpec, layoutInitial, centerMol, fitView, render: renderWithView, drawR,
     formulaText, countsOf, countsKey, chargeText, fmtFC, octetTarget, baseOrb,
   };
