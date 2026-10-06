@@ -301,6 +301,21 @@
       push('b');
       return { ok: true, kind: 'dative', msg: `${b.el} 拿出一對孤對電子,${a.el} 用擴張軌域接受(擴張八隅體)` };
     }
+    // 一邊有空軌域且沒有未配對電子(如 BF₃ 的 B、H⁺),另一邊只剩 1 個未配對電子(如 F):
+    // 這個原子先得到 1 個電子變成陰離子(F⁻,電子全部成對),再拿一對孤對電子配位 → BF₄⁻ 帶 −1
+    if (!bond) {
+      const pick = [[a, ia, b, accB, 'a'], [b, ib, a, accA, 'b']].find(([, ix, y, accY]) =>
+        ix.unpaired === 1 && ix.pairs > 0 && accY.ok && !accY.promote && atomInfo(mol, y).unpaired === 0);
+      if (pick) {
+        const [x, , y, , who] = pick;
+        x.own += 1;
+        push(who);
+        const frag = fragments(mol).find((f) => f.includes(x.id));
+        const q = frag.reduce((sum, id) => { const t = atomById(mol, id); return sum + ELEMENTS[t.el].valence - t.own; }, 0);
+        const tail = q ? `多了這 1 個電子,整個${frag.length > 1 ? '離子' : ''}帶 ${fmtFC(q)} 電荷` : `${y.el} 原本的正電荷被抵消,整體電中性`;
+        return { ok: true, kind: 'dative', msg: `${x.el} 先得到 1 個電子成為 ${x.el}⁻(未配對電子配成孤對、達到八隅體),再拿出一對孤對電子接到 ${y.el} 的空軌域(配位共價鍵)。${tail}` };
+      }
+    }
     let why;
     if (ia.unpaired === 0 && ib.unpaired === 0) why = `${a.el} 和 ${b.el} 都沒有未配對電子`;
     else why = `${ia.unpaired === 0 ? a.el : b.el} 已經沒有未配對電子,另一邊也沒有空軌域可以接受孤對電子`;
