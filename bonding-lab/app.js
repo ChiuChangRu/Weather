@@ -25,6 +25,7 @@
     partial: document.getElementById('tg-partial').checked,
     selectedId: S.selectedId,
     candidateId: S.candidateId,
+    labels: C.atomLabels(S.mol),
   });
 
   function setStatus(msg, cls = '') {
@@ -41,6 +42,7 @@
     drawTrash();
     updateAtomCard();
     updateMolCard();
+    updateCountCard();
   }
   function drawTrash() {
     const NS = 'http://www.w3.org/2000/svg';
@@ -448,7 +450,7 @@
     const up = C.neighborEl(a.el, 0, -1), down = C.neighborEl(a.el, 0, 1);
     const left = C.neighborEl(a.el, -1, 0), right = C.neighborEl(a.el, 1, 0);
     box.innerHTML = `
-      <h4>⚛ ${info.name} ${a.el}(${info.group}A 族,第 ${info.period} 週期)
+      <h4>⚛ ${info.name} ${C.atomLabels(S.mol).get(a.id).text}(${info.group}A 族,第 ${info.period} 週期)
         <span class="state-pill" style="background:${C.STATUS_COLOR[i.status]}">${STATE_LABEL[i.status]}</span></h4>
       <table class="acct">${rows.map(([k, v], n) => `<tr class="${n === rows.length - 2 ? 'sum' : ''}"><td>${k}</td><td>${v}</td></tr>`).join('')}</table>
       <p class="tiny">${i.msg}</p>
@@ -511,7 +513,7 @@
       const exc = infos.filter(({ i }) => i.status === 'exc');
       let verdict;
       if (!bad.length) verdict = `<span class="fb-ok">✔ 結構完成${exc.length ? '(含合理例外)' : ''}</span>`;
-      else verdict = `<span class="fb-bad">還沒完成:</span><ul class="tiny">${bad.map(({ a, i }) => `<li>${a.el}:${i.msg}</li>`).join('')}</ul>`;
+      else verdict = `<span class="fb-bad">還沒完成:</span><ul class="tiny">${bad.map(({ a, i }) => `<li>${C.atomLabels(S.mol).get(a.id).text}:${i.msg}</li>`).join('')}</ul>`;
       const nm = nameOf(f);
       return `<div class="frag">
         <div class="frag-formula">${f.formula} <span class="tiny">${nm}</span></div>
@@ -520,6 +522,55 @@
         <div style="margin-top:4px">${verdict}</div>
       </div>`;
     }).join('');
+  }
+
+  // 畫布下方:每個原子逐一列出電子怎麼算(F₁、F₂… 分開列)
+  function updateCountCard() {
+    const box = document.getElementById('count-card');
+    if (!box) return;
+    const ana = C.analyze(S.mol);
+    const labels = C.atomLabels(S.mol);
+    const frags = ana.frags.filter((f) => f.ids.length > 1 || f.charge !== 0);
+    if (!frags.length) {
+      box.innerHTML = '<h4>🔢 每個原子的電子計算</h4><p class="tiny">原子接起來之後,這裡會逐一列出每個原子(同種元素會編號 F₁、F₂…)的電子怎麼分配。點一列可以選取該原子。</p>';
+      return;
+    }
+    box.innerHTML = '<h4>🔢 每個原子的電子計算</h4>' + frags.map((f) => {
+      const ids = f.ids.slice().sort((x, y) => x - y);
+      let sumV = 0, sumNb = 0, sumOwn = 0, sumFC = 0;
+      const rows = ids.map((id) => {
+        const a = C.atomById(S.mol, id);
+        const i = ana.infos.get(id);
+        const V = C.ELEMENTS[a.el].valence;
+        const gain = a.own - V;
+        sumV += V; sumNb += Math.max(i.nb, 0); sumOwn += a.own; sumFC += i.fc;
+        const target = C.octetTarget(a.el);
+        const shellOk = i.shell === target ? ' ✔' : '';
+        return `<tr data-id="${id}" class="${S.selectedId === id ? 'sel' : ''}">
+          <td><b>${labels.get(id).text}</b></td>
+          <td>${V}</td>
+          <td>${gain ? (gain > 0 ? `+${gain}` : `−${-gain}`) : '0'}</td>
+          <td>${i.pairs} 對 = ${2 * i.pairs}</td>
+          <td>${i.unpaired}</td>
+          <td>${i.bondSum} 對(自己出 ${i.contributed})</td>
+          <td>${2 * i.bondSum} + ${Math.max(i.nb, 0)} = <b>${i.shell}</b>${shellOk}</td>
+          <td>${V} − ${Math.max(i.nb, 0)} − ${i.bondSum} = <b>${C.fmtFC(i.fc)}</b></td>
+        </tr>`;
+      }).join('');
+      return `<div class="frag">
+        <div class="frag-formula">${f.formula}</div>
+        <div class="count-wrap"><table class="count-table">
+          <thead><tr><th>原子</th><th>價電子</th><th>得失電子</th><th>孤對電子</th><th>未配對</th><th>共用電子對</th><th>周圍電子<br><span>2×共用 + 非鍵</span></th><th>形式電荷<br><span>價 − 非鍵 − 共用</span></th></tr></thead>
+          <tbody>${rows}</tbody>
+          <tfoot><tr><td>合計</td><td>${sumV}</td><td>${sumOwn - sumV >= 0 ? '+' : '−'}${Math.abs(sumOwn - sumV)}</td><td colspan="3">共用 ${f.sharedPairs} 對 × 2 + 非鍵 ${sumNb} = ${2 * f.sharedPairs + sumNb}</td><td>總電子 ${sumOwn}</td><td>總和 ${C.fmtFC(sumFC)}</td></tr></tfoot>
+        </table></div>
+        <p class="tiny">檢查:價電子總數 ${sumV}${f.charge ? `${f.charge < 0 ? ' + ' + -f.charge : ' − ' + f.charge}(電荷)` : ''} = ${sumOwn} = 共用電子 ${2 * f.sharedPairs} + 非鍵電子 ${sumNb};各原子形式電荷加起來 = ${C.fmtFC(sumFC)} = 整個${f.ids.length > 1 ? '分子/離子' : '離子'}的電荷。</p>
+      </div>`;
+    }).join('');
+    box.querySelectorAll('tr[data-id]').forEach((tr) => tr.addEventListener('click', () => {
+      S.selectedId = Number(tr.dataset.id);
+      draw();
+    }));
   }
 
   // ---------------------------------------------------------------------------

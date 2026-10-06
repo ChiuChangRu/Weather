@@ -147,3 +147,15 @@ details.card summary { cursor: pointer; font-weight: 700; font-size: 0.95rem; }
 @media (max-width: 600px) {
   main { padding: 10px; }
 }
+
+/* 每個原子的電子計算表 */
+.count-card { margin-top: 10px; }
+.count-wrap { overflow-x: auto; }
+.count-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; white-space: nowrap; }
+.count-table th, .count-table td { padding: 4px 6px; border-bottom: 1px solid #f1f3f5; text-align: center; }
+.count-table th { background: #f8f9fa; font-weight: 700; }
+.count-table th span { font-weight: 400; font-size: 0.7rem; color: var(--muted); }
+.count-table tbody tr { cursor: pointer; }
+.count-table tbody tr:hover { background: var(--accent-soft); }
+.count-table tbody tr.sel { background: #dbe4ff; }
+.count-table tfoot td { border-top: 2px solid var(--border); font-weight: 700; background: #f8f9fa; }

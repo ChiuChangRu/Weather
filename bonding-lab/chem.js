@@ -436,6 +436,23 @@
     normalize(mol);
   }
 
+  // 同一個分子裡同種元素有好幾個時加編號(F₁、F₂…),依放入畫布的順序
+  function atomLabels(mol) {
+    const out = new Map();
+    fragments(mol).forEach((ids) => {
+      const sorted = ids.slice().sort((x, y) => x - y);
+      const count = {};
+      sorted.forEach((id) => { const e = atomById(mol, id).el; count[e] = (count[e] || 0) + 1; });
+      const seen = {};
+      sorted.forEach((id) => {
+        const e = atomById(mol, id).el;
+        seen[e] = (seen[e] || 0) + 1;
+        out.set(id, { el: e, n: count[e] > 1 ? seen[e] : 0, text: e + (count[e] > 1 ? sub(seen[e]) || SUB[seen[e]] : '') });
+      });
+    });
+    return out;
+  }
+
   function fmtFC(fc) { return fc === 0 ? '0' : fc > 0 ? `+${fc}` : `−${-fc}`; }
 
   // ---------------------------------------------------------------------------
@@ -1170,8 +1187,14 @@
     el('circle', { cx: p.x, cy: p.y, r, fill, stroke, 'stroke-width': 2.6 }, ag);
     if (opts.selectedId === a.id) el('circle', { cx: p.x, cy: p.y, r: r + 5, fill: 'none', stroke: '#3b5bdb', 'stroke-width': 2, 'stroke-dasharray': '5 3' }, ag);
     const label = hidden || a.el;
-    const t = el('text', { x: p.x, y: p.y + 5.5 * s, 'text-anchor': 'middle', 'font-size': (label.length > 1 ? 15 : 17) * s, 'font-weight': 700, fill: '#212529' }, ag);
+    const num = !hidden && opts.labels && opts.labels.get(a.id) ? opts.labels.get(a.id).n : 0;
+    const t = el('text', { x: p.x - (num ? 3 * s : 0), y: p.y + 5.5 * s, 'text-anchor': 'middle', 'font-size': (label.length > 1 ? 15 : 17) * s, 'font-weight': 700, fill: '#212529' }, ag);
     t.textContent = label;
+    if (num) {
+      // 編號放在元素符號右下角(下標)
+      const ts = el('tspan', { dy: 5 * s, 'font-size': 11 * s, fill: '#1c7ed6' }, t);
+      ts.textContent = String(num);
+    }
 
     // 非鍵電子的方向
     const nDom = info.pairs + info.unpaired;
@@ -1265,6 +1288,6 @@
     fragments, analyze, connect, canConnect, cycleBond, breakBond, breakLink, changeElectron, swapElement, deleteAtom,
     neighborEl, relax, relaxFull, alignToRef, bondLen, mvec: mv, improveDomains, orient, orientPlan, rotateFragment, toAxisAngle, axisAngle, project, unprojectDelta, screenToWorld, newView, rotX, rotY, mm,
     applyForm, buildSpec, layoutInitial, centerMol, fitView, render: renderWithView, drawR,
-    formulaText, countsOf, countsKey, chargeText, fmtFC, octetTarget, baseOrb,
+    formulaText, atomLabels, countsOf, countsKey, chargeText, fmtFC, octetTarget, baseOrb,
   };
 })();
