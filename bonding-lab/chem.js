@@ -270,11 +270,13 @@
       return { ok: true, kind: 'normal', msg: `${a.el} 和 ${b.el} 各出 1 個未配對電子,配成一對共用電子` };
     }
     const accA = canAccept(mol, a), accB = canAccept(mol, b);
-    if (ia.pairs > 0 && accB.ok && !accB.promote) {
+    // 配位鍵:出整對電子的原子必須已經沒有未配對電子
+    // (否則像 F 這種還有未配對電子的原子拿孤對去接 BF₃,會變成 F⁺ 帶一個落單電子,不合理)
+    if (ia.pairs > 0 && ia.unpaired === 0 && accB.ok && !accB.promote) {
       push('a');
       return { ok: true, kind: 'dative', msg: `配位共價鍵:${a.el} 拿出一整對孤對電子,${b.el} 提供空軌域` };
     }
-    if (ib.pairs > 0 && accA.ok && !accA.promote) {
+    if (ib.pairs > 0 && ib.unpaired === 0 && accA.ok && !accA.promote) {
       push('b');
       return { ok: true, kind: 'dative', msg: `配位共價鍵:${b.el} 拿出一整對孤對電子,${a.el} 提供空軌域` };
     }
@@ -304,7 +306,11 @@
     else why = `${ia.unpaired === 0 ? a.el : b.el} 已經沒有未配對電子,另一邊也沒有空軌域可以接受孤對電子`;
     // 提示:讓沒有未配對電子的原子少一個電子(形式電荷 +1),就會多出一個未配對電子(NO₃⁻、O₃ 的中心原子)
     const stuck = [[a, ia], [b, ib]].find(([x, ix]) => ix.unpaired === 0 && ix.pairs > 0 && !ELEMENTS[x.el].metal && x.el !== 'H');
-    const hint = stuck ? `。提示:點選 ${stuck[0].el} 按「−1 e⁻」(形式電荷 +1),它就會多出一個未配對電子可以成鍵` : '';
+    // 另一種常見情況:一邊有空軌域(如 BF₃ 的 B),另一邊還有未配對電子(如 F)→ 先讓它多一個電子變成陰離子
+    const lone = [[a, ia, b, accB], [b, ib, a, accA]].find(([, ix, y, accY]) => ix.unpaired > 0 && ix.pairs > 0 && accY.ok && atomInfo(mol, y).unpaired === 0);
+    let hint = stuck ? `。提示:點選 ${stuck[0].el} 按「−1 e⁻」(形式電荷 +1),它就會多出一個未配對電子可以成鍵` : '';
+    if (lone) why = `${lone[0].el} 還有一個未配對電子,不能直接拿孤對電子去接 ${lone[2].el} 的空軌域`;
+    if (lone) hint = `。提示:${lone[2].el} 有空軌域,但 ${lone[0].el} 還有一個未配對電子。先點選 ${lone[0].el} 按「+1 e⁻」變成 ${lone[0].el}⁻(電子全部配成孤對),再用一對孤對電子接到 ${lone[2].el}(配位共價鍵)`;
     return { ok: false, msg: `無法再共用電子:${why}${hint}` };
   }
 
