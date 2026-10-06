@@ -220,7 +220,7 @@
         status = 'warn';
         msg = i.degree === 0 && !linked
           ? `${i.unpaired} 個未配對電子 → 可以形成 ${i.unpaired} 個共價鍵`
-          : `還有 ${i.unpaired} 個未配對電子,可以再成鍵`;
+          : `周圍只有 ${i.shell} 個電子(還差 ${octetTarget(a.el) - i.shell} 個),還有 ${i.unpaired} 個未配對電子:可以再接原子,或點一下鍵改成雙鍵/三鍵`;
       } else if (i.unpaired > 0) {
         status = 'exc'; msg = `奇數電子分子(例外):整個分子總共 ${f.electrons} 個價電子是奇數,一定會剩一個未配對電子`;
       } else if (i.shell === 8) {
@@ -279,6 +279,24 @@
     if (ib.pairs > 0 && ib.unpaired === 0 && accA.ok && !accA.promote) {
       push('b');
       return { ok: true, kind: 'dative', msg: `配位共價鍵:${b.el} 拿出一整對孤對電子,${a.el} 提供空軌域` };
+    }
+    // 升級成雙鍵,但一邊(Y)只剩孤對、另一邊(X)還有未配對電子(像 O–O–O 拼到一半):
+    // 讓 Y 把 1 個電子交給同分子裡另一個還有未配對電子的原子 Z(Y 形式電荷 +1、Z −1),
+    // Y 多出的未配對電子再跟 X 配成第二對 → O=O⁺–O⁻、O=N⁺(–O⁻)–O 這類結構
+    if (bond) {
+      const frag = fragments(mol).find((f) => f.includes(a.id));
+      for (const [Y, iY, X, iX] of [[a, ia, b, ib], [b, ib, a, ia]]) {
+        if (!(iY.unpaired === 0 && iY.pairs > 0 && iX.unpaired > 0 && !ELEMENTS[Y.el].metal)) continue;
+        const Z = frag.map((id) => atomById(mol, id))
+          .find((z) => z !== X && z !== Y && !ELEMENTS[z.el].metal && atomInfo(mol, z).unpaired > 0);
+        if (!Z) continue;
+        Y.own -= 1;
+        Z.own += 1;
+        push('ab');
+        const L = atomLabels(mol);
+        const [y, x, z] = [Y, X, Z].map((t) => L.get(t.id).text);
+        return { ok: true, kind: 'shift', msg: `${y} 先把 1 個電子交給同一分子裡還有落單電子的 ${z}(${y} 形式電荷 +1、${z} 形式電荷 −1),${y} 多出的未配對電子再和 ${x} 配成第二對共用電子,三個原子周圍都變成 8 個電子` };
+      }
     }
     if (ib.unpaired > 0 && promotable(mol, a)) {
       a.extra = (a.extra || 0) + 1;

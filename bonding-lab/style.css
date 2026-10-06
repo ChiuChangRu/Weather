@@ -159,3 +159,4 @@ details.card summary { cursor: pointer; font-weight: 700; font-size: 0.95rem; }
 .count-table tbody tr:hover { background: var(--accent-soft); }
 .count-table tbody tr.sel { background: #dbe4ff; }
 .count-table tfoot td { border-top: 2px solid var(--border); font-weight: 700; background: #f8f9fa; }
+.count-table .bad { color: var(--error); font-weight: 700; }
