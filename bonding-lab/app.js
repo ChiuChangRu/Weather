@@ -1,7 +1,7 @@
 // 分頁①「拼拼看」:週期表、拖拉成鍵、電子記帳面板、範例分子、動手畫題目
 (() => {
   const C = window.Chem;
-  const { CATS, PRESETS, byKey } = window.Presets;
+  const { CATS, PRESETS, SERIES, byKey } = window.Presets;
   const W = 640, H = 440;
   const TRASH = { x: W - 62, y: H - 62, w: 48, h: 48 };
 
@@ -267,13 +267,17 @@
     });
     // 找附近可以成鍵的原子
     // 範圍內優先選「接得起來」的原子,再比距離
+    // 「接得起來」的原子搜尋範圍放寬(例如第 4 個 F 放在兩個 F 之間,也會找到中間的 B);
+    // 都接不起來時,才退而選最近的原子(放開後顯示為什麼不能接)
     let best = null, bestD = Infinity;
     S.mol.atoms.forEach((o) => {
       if (o.id === a.id || C.bondBetween(S.mol, a.id, o.id) || C.linkBetween(S.mol, a.id, o.id)) return;
       const q = C.project(S.view, [o.x, o.y, o.z]);
       const dist = Math.hypot(me.x - q.x, me.y - q.y);
-      if (dist > (C.drawR(a.el) + C.drawR(o.el)) * me.s + 50) return;
-      const score = dist + (C.canConnect(S.mol, a, o) ? 0 : 1000);
+      const reach = (C.drawR(a.el) + C.drawR(o.el)) * me.s;
+      const ok = dist <= reach + 110 && C.canConnect(S.mol, a, o);
+      if (!ok && dist > reach + 50) return;
+      const score = dist + (ok ? 0 : 1000);
       if (score < bestD) { best = o; bestD = score; }
     });
     S.candidateId = best ? best.id : null;
@@ -624,7 +628,76 @@
     tip.innerHTML = `<b>${cat.label}</b>:${cat.tip}`;
     updateResonanceBtn();
     describePreset();
+    updateCompareCard();
     draw();
+  }
+  // 並排比較:為什麼這幾個分子/離子的電子排法相同
+  function updateCompareCard() {
+    const box = document.getElementById('compare-card');
+    const series = S.preset && SERIES.find((x) => x.keys.includes(S.preset.key));
+    if (!series) { box.style.display = 'none'; return; }
+    box.style.display = '';
+    const cols = series.keys.map((key) => {
+      const spec = byKey[key];
+      const { mol, ids } = C.buildSpec(spec, spec.forms[0]);
+      const ana = C.analyze(mol);
+      const center = C.atomById(mol, ids[0]);
+      const ci = ana.infos.get(center.id);
+      const V = C.ELEMENTS[center.el].valence;
+      // 外圍原子照實際結構分組:元素、鍵數、孤對、形式電荷都相同的算一組
+      const outer = {};
+      ids.slice(1).forEach((id) => {
+        const a = C.atomById(mol, id);
+        const i = ana.infos.get(id);
+        const k = `${a.el}|${i.bondSum}|${i.pairs}|${i.fc}`;
+        outer[k] = outer[k] || { el: a.el, n: 0, bonds: i.bondSum, pairs: i.pairs, fc: i.fc };
+        outer[k].n++;
+      });
+      const charge = ana.frags[0].charge;
+      return { key, spec, mol, center, ci, V, outer, charge };
+    });
+    const svgOf = (c) => {
+      const NS = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(NS, 'svg');
+      svg.setAttribute('viewBox', '0 0 220 180');
+      const view = C.newView(110, 90);
+      C.orient(c.mol, view, true);
+      C.centerMol(c.mol);
+      C.fitView(c.mol, view, 220, 180, 10);
+      C.render(svg, c.mol, view, { noStatus: true, labels: C.atomLabels(c.mol) });
+      return svg;
+    };
+    const row = (label, f) => `<tr><th>${label}</th>${cols.map((c) => `<td>${f(c)}</td>`).join('')}</tr>`;
+    const outerText = (c) => Object.values(c.outer).map((o) =>
+      `${o.el}×${o.n}:各 ${o.bonds} 個鍵、${o.pairs} 對孤對${o.fc ? `、形式電荷 ${C.fmtFC(o.fc)}` : ''}`).join('<br>');
+    const outerEls = new Set(cols.flatMap((c) => Object.values(c.outer).map((o) => o.el)));
+    const avail = cols.map((c) => c.V - c.ci.fc);
+    const same = avail.every((x) => x === avail[0]) && cols.every((c) => c.ci.bondSum === cols[0].ci.bondSum && c.ci.pairs === cols[0].ci.pairs);
+    box.innerHTML = `<h4>🔍 為什麼 ${series.title} 電子排法相同?</h4>
+      <div class="cmp-grid" style="grid-template-columns:repeat(${cols.length},minmax(0,1fr))">${cols.map((c) => `<div class="cmp-col${c.key === S.preset.key ? ' cur' : ''}" data-key="${c.key}"><div class="cmp-name">${c.spec.label}</div></div>`).join('')}</div>
+      <div class="count-wrap"><table class="count-table cmp-table">
+        ${row('中心原子', (c) => `<b>${c.center.el}</b>(${C.ELEMENTS[c.center.el].group}A)`)}
+        ${row('中心的價電子', (c) => c.V)}
+        ${row('中心的形式電荷', (c) => C.fmtFC(c.ci.fc))}
+        ${row('中心可用來成鍵的電子<br><span>價電子 − 形式電荷</span>', (c) => `${c.V} − (${C.fmtFC(c.ci.fc)}) = <b>${c.V - c.ci.fc}</b>`)}
+        ${row('中心周圍:共用對 / 孤對', (c) => `${c.ci.bondSum} 對 / ${c.ci.pairs} 對 → ${c.ci.shell} 個電子`)}
+        ${row('外圍原子', outerText)}
+        ${row('整個粒子的價電子總數', (c) => `${c.mol.atoms.reduce((t, a) => t + a.own, 0)} 個(電荷 ${C.fmtFC(c.charge)})`)}
+      </table></div>
+      <p class="tiny">${same
+        ? `中心原子「可用來成鍵的電子」都是 <b>${avail[0]}</b> 個:${cols.every((c) => c.ci.fc === cols[0].ci.fc && c.V === cols[0].V)
+          ? '中心原子是同族元素,價電子數相同,可以直接互換。'
+          : '價電子較少的中心原子帶負的形式電荷(多拿電子),價電子較多的帶正的形式電荷(少電子),扣完後一樣多。'}`
+          + (outerEls.has('H') && outerEls.has('F') ? '外圍原子不管是 H 還是 F,都只差 1 個電子就滿,所以各接 1 個鍵;F 多出的 6 個電子是 F 自己的 3 對孤對,不影響中心。' : '')
+          + `因此中心周圍的共用電子對、孤對數完全一樣,排法(形狀)也一樣。${cols.some((c) => c.mol.atoms.reduce((t, a) => t + a.own, 0) !== cols[0].mol.atoms.reduce((t, a) => t + a.own, 0)) ? '注意:整個粒子的價電子總數不一定相同。' : `這 ${cols.length} 個的價電子總數也都是 ${cols[0].mol.atoms.reduce((t, a) => t + a.own, 0)} 個(等電子)。`}`
+        : '中心原子可用的電子數或鍵數不同,請對照上表。'}</p>
+      <p class="tiny">點上面的分子可以切換到它。</p>`;
+    const grid = box.querySelector('.cmp-grid');
+    cols.forEach((c, k) => grid.children[k].insertBefore(svgOf(c), grid.children[k].firstChild));
+    grid.querySelectorAll('.cmp-col').forEach((el) => el.addEventListener('click', () => {
+      document.getElementById('preset-select').value = el.dataset.key;
+      loadPreset(el.dataset.key);
+    }));
   }
   function describePreset() {
     const spec = S.preset;
@@ -648,6 +721,7 @@
     if (!S.preset) return;
     S.preset = null;
     S.presetIds = null;
+    document.getElementById('compare-card').style.display = 'none';
     document.getElementById('preset-select').value = '';
     document.getElementById('btn-resonance').style.display = 'none';
   }

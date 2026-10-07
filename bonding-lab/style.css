@@ -162,3 +162,13 @@ details.card summary { cursor: pointer; font-weight: 700; font-size: 0.95rem; }
 .count-table tfoot td { border-top: 2px solid var(--border); font-weight: 700; background: #f8f9fa; }
 .count-table .bad { color: var(--error); font-weight: 700; }
 .count-table .exc { color: #7048e8; font-weight: 700; }
+
+/* 等電子並排比較 */
+.compare-card { margin-top: 10px; }
+.cmp-grid { display: grid; gap: 8px; margin-bottom: 8px; }
+.cmp-col { border: 1px solid var(--border); border-radius: 10px; padding: 4px; text-align: center; cursor: pointer; background: #fff; }
+.cmp-col.cur { border-color: var(--accent); background: var(--accent-soft); }
+.cmp-col svg { width: 100%; height: auto; display: block; }
+.cmp-name { font-weight: 700; font-size: 0.85rem; }
+.cmp-table th { text-align: left; white-space: normal; min-width: 110px; }
+.cmp-table td { white-space: normal; }
