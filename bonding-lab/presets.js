@@ -115,5 +115,15 @@
     { key: 'NaOH', label: 'NaOH 氫氧化鈉', cat: 'ionic', els: ['Na', 'O', 'H'], forms: [{ bonds: [[1, 2, 1]], links: [[0, 1]], fc: { 0: 1, 1: -1 } }] },
   ];
 
-  window.Presets = { CATS, PRESETS, byKey: Object.fromEntries(PRESETS.map((p) => [p.key, p])) };
+  // 講義「同族互換/等電子」:中心原子可用的電子數相同、外圍原子接的鍵數相同 → 電子排法相同
+  const SERIES = [
+    { keys: ['CH4', 'NH4+', 'BF4-'], title: 'CH₄ = NH₄⁺ = BF₄⁻' },
+    { keys: ['SO4', 'PO4', 'ClO4'], title: 'SO₄²⁻ = PO₄³⁻ = ClO₄⁻' },
+    { keys: ['SO2', 'NO2-', 'O3'], title: 'SO₂ = NO₂⁻ = O₃' },
+    { keys: ['SO3', 'NO3-', 'CO3'], title: 'SO₃ = NO₃⁻ = CO₃²⁻' },
+    { keys: ['H2O', 'H2S'], title: 'H₂O = H₂S' },
+    { keys: ['NH3', 'PH3'], title: 'NH₃ = PH₃' },
+  ];
+
+  window.Presets = { CATS, PRESETS, SERIES, byKey: Object.fromEntries(PRESETS.map((p) => [p.key, p])) };
 })();
